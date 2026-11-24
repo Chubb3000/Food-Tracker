@@ -346,6 +346,7 @@
     <h2 style="margin-top:28px">Photo AI</h2>
     <div class="fine">Photo AI needs an AI key. Free: a Gemini key from aistudio.google.com/apikey (it can be busy, and Google may use your photos). Steadier: a Claude key from platform.claude.com, which starts with sk-ant- and costs about a cent or less per photo. It is billed separately from a Claude subscription. Paste either key below. It is saved only to your account.</div>
     <div class="field"><label for="aiKey">AI key (Gemini or Claude)</label><input id="aiKey" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
+    <div class="fine" id="aiKeyKind" style="margin-top:-6px"></div>
     <div class="fine" id="aiSharedNote" style="display:none">Photo AI is ready. You are using the AI key shared by the app owner. You can also paste your own key above.</div>
     <div class="field" id="aiModelWrap" style="display:none"><label for="aiModel">AI model name (leave blank for automatic)</label><input id="aiModel" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
     <div id="goalHint"></div>
@@ -1035,6 +1036,7 @@
     $('gFi').value = goals.fi;
     $('unitSel').value = unit;
     $('aiKey').value = aiKey;
+    updateKeyKind();
     $('aiModel').value = aiModel;
     $('aiModelWrap').style.display = (aiModel || showModelBox) ? 'block' : 'none';
     $('shareErr').textContent = '';
@@ -1947,6 +1949,16 @@
 
   function currentAiKey() { return aiKey || sharedKey; }
 
+  // Tells the person which AI the key in the box will use
+  function updateKeyKind() {
+    const k = $('aiKey').value.trim();
+    const el = $('aiKeyKind');
+    if (!k) { el.textContent = ''; return; }
+    el.textContent = /^sk-ant-/i.test(k)
+      ? 'This is a Claude key. Photos will use Claude.'
+      : 'This is NOT a Claude key (those start with sk-ant-). Photos will use the free Google AI, which hits its limit often.';
+  }
+
   function updateAiNote() {
     $('aiSharedNote').style.display = (!aiKey && sharedKey) ? 'block' : 'none';
   }
@@ -2400,7 +2412,7 @@
       $('aiBox').style.display = 'block';
       $('aiGo').textContent = 'Analyze photo';
       $('aiGo').disabled = false;
-      st.textContent = 'Photo ready. Add a description if you like, then tap Analyze photo.';
+      st.textContent = 'Photo ready (using ' + (aiProvider() === 'claude' ? 'Claude' : 'the free Google AI') + '). Add a description if you like, then tap Analyze photo.';
     } catch (e) {
       if (my === aiToken) {
         aiImg = null;
@@ -2725,6 +2737,7 @@
   $('backBtn').onclick = goHome;
   $('settingsBackBtn').onclick = goHome;
   $('saveGoals').onclick = saveGoals;
+  $('aiKey').addEventListener('input', updateKeyKind);
   ['gCal', 'gP', 'gC', 'gF'].forEach(id => $(id).addEventListener('input', updateGoalHint));
 
   $('photoBtn').onclick = () => {
