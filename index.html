@@ -2081,7 +2081,7 @@
   // A key that starts with sk-ant- is a Claude key, anything else is treated as a Gemini key
   function aiProvider() { return /^sk-ant-/i.test(currentAiKey()) ? 'claude' : 'gemini'; }
 
-  const AI_TIMEOUT_MS = 40000;   // give up on one request after this long (a stuck phone connection must never load forever)
+  const AI_TIMEOUT_MS = 60000;   // give up on one request after this long (a stuck phone connection must never load forever)
   const AI_SLOW_MS = 12000;      // show a "still working" note after this long
 
   // One request. Never throws: a network problem comes back as { net: true }, a stuck one as msg 'timeout'.
@@ -2162,21 +2162,38 @@
     if (aiModel && !wrongKind) models = [aiModel];
     else if (aiGoodModel && (claude ? /^claude/i.test(aiGoodModel) : /^gemini/i.test(aiGoodModel))) models = [aiGoodModel].concat(models.filter(m => m !== aiGoodModel));
     const prompt = aiPrompt(note);
-    const send = (m) => {
+    // Claude 5.5 models think for a long time by default, which made photos slow. Ask for no thinking and
+    // medium effort; if a model does not accept those settings, send the plain request instead.
+    const claudeBody = (m, plain) => {
+      const o = {
+        model: m,
+        max_tokens: 4000,
+        messages: [{ role: 'user', content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
+          { type: 'text', text: prompt }
+        ] }]
+      };
+      if (!plain) {
+        if (/haiku/i.test(m)) o.thinking = { type: 'disabled' };
+        else if (/sonnet/i.test(m)) o.thinking = { type: 'between_tools' };
+        o.output_config = { effort: 'medium' };
+      }
+      return JSON.stringify(o);
+    };
+    const claudeHeaders = {
+      'Content-Type': 'application/json',
+      'x-api-key': currentAiKey(),
+      'anthropic-version': '2026-10-21',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    };
+    const send = async (m) => {
       if (claude) {
-        return sendJson('https://api.anthropic.com/v1/messages', {
-          'Content-Type': 'application/json',
-          'x-api-key': currentAiKey(),
-          'anthropic-version': '2026-10-21',
-          'anthropic-dangerous-direct-browser-access': 'true'
-        }, JSON.stringify({
-          model: m,
-          max_tokens: 2000,
-          messages: [{ role: 'user', content: [
-            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
-            { type: 'text', text: prompt }
-          ] }]
-        }));
+        const url = 'https://api.anthropic.com/v1/messages';
+        const r = await sendJson(url, claudeHeaders, claudeBody(m, false));
+        if (!r.ok && r.status === 400 && /thinking|effort|output_config|between_tools|disabled|extra inputs|not permitted|unexpected/i.test(r.msg) && !/credit|billing|api key|x-api-key|authentication/i.test(r.msg)) {
+          return sendJson(url, claudeHeaders, claudeBody(m, true));
+        }
+        return r;
       }
       return sendJson('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(m) + ':generateContent', {
         'Content-Type': 'application/json',
