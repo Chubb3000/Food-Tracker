@@ -1175,10 +1175,10 @@
     $('bars').innerHTML =
       barHTML('Calories', total, goals.cal, 'cal', '#2e7d32') +
       barHTML('Protein', tp, goals.p, 'g', '#1565c0') +
+      barHTML('Fat', tf, goals.f, 'g', '#8e24aa') +
       barHTML('Carbs', tc, goals.c, 'g', '#f9a825') +
       barHTML('Sugar', ts, goals.s, 'g', '#ef6c00', { sub: true }) +
-      barHTML('Fiber', tfi, goals.fi, 'g', '#6d4c41', { sub: true, minimum: true }) +
-      barHTML('Fat', tf, goals.f, 'g', '#8e24aa');
+      barHTML('Fiber', tfi, goals.fi, 'g', '#6d4c41', { sub: true, minimum: true });
     $('barsNote').textContent = (missing && list.length > 0)
       ? 'Sugar and fiber are part of carbs. Some foods do not list them, so those two totals can be low.' : '';
 
