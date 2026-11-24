@@ -116,6 +116,8 @@
   /* photo AI */
   #photoNote { width: 100%; margin-bottom: 8px; padding: 10px; font-size: 1em; font-family: inherit; border: 1px solid #ccc; border-radius: 8px; resize: vertical; min-height: 64px; }
   #photoNoteLbl { font-weight: 600; margin: 6px 0 4px; }
+  #aiProg { display: none; height: 10px; background: #dfe3e6; border-radius: 6px; overflow: hidden; margin: 6px 0 10px; }
+  #aiProgBar { height: 100%; width: 0; background: #2e7d32; border-radius: 6px; transition: width 0.25s ease; }
   #aiBox { background: #eef3fb; }
   #aiBox img { width: 100%; max-height: 220px; object-fit: cover; border-radius: 8px; margin-bottom: 8px; display: block; }
   #aiBox ul li { background: white; }
@@ -231,6 +233,7 @@
     <div id="photoNoteLbl">Describe it (optional, but makes it more accurate)</div>
     <textarea id="photoNote" rows="2" maxlength="300" placeholder="Like: 4 pork sausage links, plain omelet, no butter. Or: grilled chicken, about 6 oz."></textarea>
     <div id="photoStatus"></div>
+    <div id="aiProg" role="progressbar" aria-label="Analyzing your photo" aria-valuemin="0" aria-valuemax="100"><div id="aiProgBar"></div></div>
     <div class="box" id="aiBox">
       <img id="photoPrev" alt="Your photo">
       <div id="aiBody" style="display:none">
@@ -997,6 +1000,7 @@
     $('photoStatus').textContent = '';
     $('photoStatus').className = '';
     $('photoNote').value = '';
+    if (typeof progStop === 'function') progStop(false);
   }
 
   function openAdd(mealKey) {
@@ -2072,16 +2076,23 @@
   // A key that starts with sk-ant- is a Claude key, anything else is treated as a Gemini key
   function aiProvider() { return /^sk-ant-/i.test(currentAiKey()) ? 'claude' : 'gemini'; }
 
-  // One request. Never throws: a network problem comes back as { net: true }.
+  const AI_TIMEOUT_MS = 40000;   // give up on one request after this long (a stuck phone connection must never load forever)
+  const AI_SLOW_MS = 12000;      // show a "still working" note after this long
+
+  // One request. Never throws: a network problem comes back as { net: true }, a stuck one as msg 'timeout'.
   async function sendJson(url, headers, body) {
+    const ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    const timer = ctl ? setTimeout(() => ctl.abort(), AI_TIMEOUT_MS) : null;
     let res;
     try {
-      res = await fetch(url, { method: 'POST', headers: headers, body: body });
+      res = await fetch(url, { method: 'POST', headers: headers, body: body, signal: ctl ? ctl.signal : undefined });
     } catch (e) {
-      return { ok: false, net: true, status: 0, msg: 'network' };
+      if (timer) clearTimeout(timer);
+      return { ok: false, net: true, status: 0, msg: (e && e.name === 'AbortError') ? 'timeout' : 'network' };
     }
     let json = null;
     try { json = await res.json(); } catch (e) {}
+    if (timer) clearTimeout(timer);
     const msg = (json && json.error && json.error.message) ? String(json.error.message) : ('HTTP ' + res.status);
     return { ok: res.ok, net: false, status: res.status, json: json, msg: msg };
   }
@@ -2099,14 +2110,18 @@
 
   // Ask the service which models this key can use (used when the built-in names are all rejected)
   async function listModels(claude) {
+    const ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    const timer = ctl ? setTimeout(() => ctl.abort(), AI_TIMEOUT_MS) : null;
+    const sig = ctl ? ctl.signal : undefined;
     let res;
     try {
       res = claude
-        ? await fetch('https://api.anthropic.com/v1/models?limit=100', { headers: { 'x-api-key': currentAiKey(), 'anthropic-version': '2026-10-21', 'anthropic-dangerous-direct-browser-access': 'true' } })
-        : await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': currentAiKey() } });
-    } catch (e) { return { ids: [], status: 0, msg: 'network' }; }
+        ? await fetch('https://api.anthropic.com/v1/models?limit=100', { headers: { 'x-api-key': currentAiKey(), 'anthropic-version': '2026-10-21', 'anthropic-dangerous-direct-browser-access': 'true' }, signal: sig })
+        : await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': currentAiKey() }, signal: sig });
+    } catch (e) { if (timer) clearTimeout(timer); return { ids: [], status: 0, msg: 'network' }; }
     let json = null;
     try { json = await res.json(); } catch (e) {}
+    if (timer) clearTimeout(timer);
     const msg = (json && json.error && json.error.message) ? String(json.error.message) : ('HTTP ' + res.status);
     let ids = [];
     if (res.ok && json) {
@@ -2168,7 +2183,7 @@
     };
     let seen = null;
     for (let round = 0; round < 2; round++) {
-      seen = { net: 0, busy: 0, limit: 0, missing: 0, other: null, tried: 0 };
+      seen = { net: 0, busy: 0, limit: 0, missing: 0, other: null, tried: 0, timeout: 0 };
       for (const m of models) {
         const r = await send(m);
         seen.tried++;
@@ -2177,7 +2192,7 @@
           return aiResultFrom(r, claude);
         }
         keyProblem(r.status, r.msg, who);
-        if (r.net) seen.net++;
+        if (r.net) { seen.net++; if (r.msg === 'timeout') { seen.timeout++; break; } }
         else if (r.status >= 500 || r.status === 529) seen.busy++;
         else if (r.status === 429) seen.limit++;
         else if (r.status === 404) { seen.missing++; if (!seen.m404) seen.m404 = r.msg; }
@@ -2185,7 +2200,7 @@
         // anything else (model missing, busy, free limit for that model...): try the next model
       }
       // only a busy server or a dropped connection is worth one more round
-      if (seen.net + seen.busy < seen.tried || round === 1) break;
+      if (seen.net + seen.busy < seen.tried || round === 1 || seen.timeout > 0) break;
       await new Promise(res => setTimeout(res, 2500));
     }
     let listed = null;
@@ -2205,6 +2220,7 @@
         else if (r.status !== 404) seen.other = r;
       }
     }
+    if (seen.timeout > 0 && seen.limit === 0 && !seen.other) throw friendly('The AI took too long to answer. Try again.');
     if (seen.net === seen.tried) throw friendly('Could not reach the AI. Check your internet and try again.');
     if (seen.net + seen.busy > 0 && seen.limit === 0 && seen.missing === 0 && !seen.other) {
       throw friendly((claude ? 'Claude' : 'The free Google AI') + ' is busy right now. Wait a minute and try again.');
@@ -2281,6 +2297,33 @@
     };
   }
 
+  // Progress bar: fills quickly, then slows down and waits near the end until the answer arrives
+  let progTimer = null, progPct = 0;
+  function progStart() {
+    clearInterval(progTimer);
+    progPct = 3;
+    $('aiProgBar').style.transition = 'none';
+    $('aiProgBar').style.width = '3%';
+    $('aiProg').style.display = 'block';
+    void $('aiProgBar').offsetWidth;
+    $('aiProgBar').style.transition = '';
+    progTimer = setInterval(() => {
+      progPct += (92 - progPct) * 0.035;
+      $('aiProgBar').style.width = progPct.toFixed(1) + '%';
+      $('aiProg').setAttribute('aria-valuenow', String(Math.round(progPct)));
+    }, 250);
+  }
+  function progStop(finished) {
+    clearInterval(progTimer);
+    progTimer = null;
+    if (finished) {
+      $('aiProgBar').style.width = '100%';
+      setTimeout(() => { if (!progTimer) $('aiProg').style.display = 'none'; }, 350);
+    } else {
+      $('aiProg').style.display = 'none';
+    }
+  }
+
   async function analyzePhoto(file, reuse) {
     if (aiBusy) return;
     if (reuse && !aiImg) return;
@@ -2290,9 +2333,13 @@
     const st = $('photoStatus');
     st.className = '';
     st.textContent = 'Reading your photo...';
+    progStart();
     $('aiBox').style.display = 'none';
     aiResult = null;
     aiEdit = -1;
+    const slow = setTimeout(() => {
+      if (my === aiToken && aiBusy && !aiResult) st.textContent = 'Still working... this can take up to a minute.';
+    }, AI_SLOW_MS);
     try {
       const img = reuse ? aiImg : await photoToJpeg(file);
       if (my !== aiToken) return;
@@ -2306,6 +2353,7 @@
       aiResult = readAiResult(json);
       aiScale = 1;
       st.textContent = '';
+      progStop(true);
       drawAi();
     } catch (e) {
       if (my === aiToken) {
@@ -2333,6 +2381,8 @@
         }
       }
     } finally {
+      clearTimeout(slow);
+      if (progTimer) progStop(false);
       aiBusy = false;
       $('photoBtn').disabled = false;
       $('photoIn').value = '';
