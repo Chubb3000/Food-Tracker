@@ -225,13 +225,14 @@
     </div>
 
     <h3>Photo of your meal</h3>
-    <div class="fine" style="margin-top:0">Take a photo of a plate or any food. AI guesses what it is and the macros.</div>
+    <div class="fine" style="margin-top:0">1) Take or choose a photo. 2) Add a description if you like. 3) Tap Analyze photo. AI guesses what it is and the macros.</div>
     <div class="row">
       <button id="photoBtn">&#128247; Take or choose a photo</button>
       <input id="photoIn" type="file" accept="image/*" style="display:none">
     </div>
     <div id="photoNoteLbl">Describe it (optional, but makes it more accurate)</div>
     <textarea id="photoNote" rows="2" maxlength="300" placeholder="Like: 4 pork sausage links, plain omelet, no butter. Or: grilled chicken, about 6 oz."></textarea>
+    <div class="row"><button id="aiGo" disabled>Analyze photo</button></div>
     <div id="photoStatus"></div>
     <div id="aiProg" role="progressbar" aria-label="Analyzing your photo" aria-valuemin="0" aria-valuemax="100"><div id="aiProgBar"></div></div>
     <div class="box" id="aiBox">
@@ -1000,6 +1001,8 @@
     $('photoStatus').textContent = '';
     $('photoStatus').className = '';
     $('photoNote').value = '';
+    $('aiGo').disabled = true;
+    $('aiGo').textContent = 'Analyze photo';
     if (typeof progStop === 'function') progStop(false);
   }
 
@@ -2297,78 +2300,141 @@
     };
   }
 
-  // Progress bar: fills quickly, then slows down and waits near the end until the answer arrives
-  let progTimer = null, progPct = 0;
-  function progStart() {
-    clearInterval(progTimer);
-    progPct = 3;
-    $('aiProgBar').style.transition = 'none';
-    $('aiProgBar').style.width = '3%';
-    $('aiProg').style.display = 'block';
-    void $('aiProgBar').offsetWidth;
-    $('aiProgBar').style.transition = '';
-    progTimer = setInterval(() => {
-      progPct += (92 - progPct) * 0.035;
-      $('aiProgBar').style.width = progPct.toFixed(1) + '%';
-      $('aiProg').setAttribute('aria-valuenow', String(Math.round(progPct)));
-    }, 250);
+  // ---------- Progress bar (based on how long the last few analyses took on this device) ----------
+  const AI_EXPECT_DEFAULT = 12000, AI_EXPECT_MIN = 4000, AI_EXPECT_MAX = 40000;
+  let progTimer = null;
+
+  function aiExpectedMs() {
+    let list = [];
+    try { list = JSON.parse(localStorage.getItem('aiDur') || '[]'); } catch (e) {}
+    list = (Array.isArray(list) ? list : []).filter(n => typeof n === 'number' && n > 0).slice(-5);
+    if (!list.length) return AI_EXPECT_DEFAULT;
+    const avg = list.reduce((s, n) => s + n, 0) / list.length;
+    return Math.min(AI_EXPECT_MAX, Math.max(AI_EXPECT_MIN, Math.round(avg)));
   }
+
+  function aiRememberMs(ms) {
+    try {
+      let list = JSON.parse(localStorage.getItem('aiDur') || '[]');
+      if (!Array.isArray(list)) list = [];
+      list.push(Math.round(ms));
+      localStorage.setItem('aiDur', JSON.stringify(list.slice(-5)));
+    } catch (e) {}
+  }
+
+  function progStart(expected) {
+    clearInterval(progTimer);
+    const t0 = Date.now();
+    const bar = $('aiProgBar'), box = $('aiProg'), st = $('photoStatus');
+    bar.style.transition = 'none';
+    bar.style.width = '0%';
+    box.style.display = 'block';
+    void bar.offsetWidth;
+    bar.style.transition = '';
+    const tick = () => {
+      const t = Date.now() - t0;
+      // straight line to 90% at the expected time, then it creeps toward 98% while it waits
+      const pct = t <= expected ? 90 * t / expected : 90 + 8 * (1 - Math.exp(-(t - expected) / expected));
+      bar.style.width = pct.toFixed(1) + '%';
+      box.setAttribute('aria-valuenow', String(Math.round(pct)));
+      if (t < expected) {
+        const left = Math.max(1, Math.ceil((expected - t) / 1000));
+        st.textContent = 'Analyzing... about ' + left + (left === 1 ? ' second' : ' seconds') + ' left.';
+      } else if (t < expected + AI_SLOW_MS) {
+        st.textContent = 'Almost done...';
+      } else {
+        st.textContent = 'Still working... this can take up to a minute.';
+      }
+    };
+    tick();
+    progTimer = setInterval(tick, 200);
+    return t0;
+  }
+
   function progStop(finished) {
     clearInterval(progTimer);
     progTimer = null;
     if (finished) {
       $('aiProgBar').style.width = '100%';
-      setTimeout(() => { if (!progTimer) $('aiProg').style.display = 'none'; }, 350);
+      setTimeout(() => { if (!progTimer) $('aiProg').style.display = 'none'; }, 400);
     } else {
       $('aiProg').style.display = 'none';
     }
   }
 
-  async function analyzePhoto(file, reuse) {
+  // Step 1: the person picks a photo. It is only shrunk and shown. Nothing is sent yet.
+  async function loadPhoto(file) {
     if (aiBusy) return;
-    if (reuse && !aiImg) return;
-    aiBusy = true;
-    $('photoBtn').disabled = true;
     const my = aiToken;
     const st = $('photoStatus');
     st.className = '';
     st.textContent = 'Reading your photo...';
-    progStart();
-    $('aiBox').style.display = 'none';
-    aiResult = null;
-    aiEdit = -1;
-    const slow = setTimeout(() => {
-      if (my === aiToken && aiBusy && !aiResult) st.textContent = 'Still working... this can take up to a minute.';
-    }, AI_SLOW_MS);
+    $('aiGo').disabled = true;
     try {
-      const img = reuse ? aiImg : await photoToJpeg(file);
+      const img = await photoToJpeg(file);
       if (my !== aiToken) return;
       aiImg = img;
+      aiResult = null;
+      aiEdit = -1;
       $('photoPrev').src = img.dataUrl;
       $('aiBody').style.display = 'none';
       $('aiBox').style.display = 'block';
-      st.textContent = 'Analyzing... this takes a few seconds.';
-      const json = await callAI(img.b64, $('photoNote').value.trim());
+      $('aiGo').textContent = 'Analyze photo';
+      $('aiGo').disabled = false;
+      st.textContent = 'Photo ready. Add a description if you like, then tap Analyze photo.';
+    } catch (e) {
+      if (my === aiToken) {
+        aiImg = null;
+        $('aiBox').style.display = 'none';
+        st.className = 'err';
+        st.textContent = 'Could not read that photo. Try another one.';
+      }
+    } finally {
+      $('photoIn').value = '';
+    }
+  }
+
+  // Step 2: the person taps Analyze. Uses the photo already loaded and the description box as it is now.
+  async function analyzePhoto() {
+    if (aiBusy) return;
+    if (!aiImg) {
+      const s0 = $('photoStatus');
+      s0.className = 'err';
+      s0.textContent = 'Take or choose a photo first.';
+      return;
+    }
+    aiBusy = true;
+    $('photoBtn').disabled = true;
+    $('aiGo').disabled = true;
+    const my = aiToken;
+    const st = $('photoStatus');
+    st.className = '';
+    $('aiBody').style.display = 'none';
+    $('aiBox').style.display = 'block';
+    aiResult = null;
+    aiEdit = -1;
+    const t0 = progStart(aiExpectedMs());
+    try {
+      const json = await callAI(aiImg.b64, $('photoNote').value.trim());
       if (my !== aiToken) return;
       aiResult = readAiResult(json);
+      aiRememberMs(Date.now() - t0);
       aiScale = 1;
       st.textContent = '';
       progStop(true);
+      $('aiGo').textContent = 'Analyze again';
       drawAi();
     } catch (e) {
       if (my === aiToken) {
-        $('aiBox').style.display = 'none';
         st.className = 'err';
         st.textContent = (e && e.friendly) ? e.message : 'Could not read that photo. Try another one.';
-        if (aiImg) {
-          st.appendChild(document.createTextNode(' '));
-          const r = document.createElement('button');
-          r.type = 'button';
-          r.className = 'link';
-          r.textContent = 'Try again';
-          r.onclick = () => analyzePhoto(null, true);
-          st.appendChild(r);
-        }
+        st.appendChild(document.createTextNode(' '));
+        const r = document.createElement('button');
+        r.type = 'button';
+        r.className = 'link';
+        r.textContent = 'Try again';
+        r.onclick = () => analyzePhoto();
+        st.appendChild(r);
         if (e && e.needsModel) {
           showModelBox = true;
           st.appendChild(document.createTextNode(' '));
@@ -2381,11 +2447,10 @@
         }
       }
     } finally {
-      clearTimeout(slow);
       if (progTimer) progStop(false);
       aiBusy = false;
       $('photoBtn').disabled = false;
-      $('photoIn').value = '';
+      $('aiGo').disabled = !aiImg;
     }
   }
 
@@ -2660,9 +2725,10 @@
   };
   $('photoIn').addEventListener('change', () => {
     const f = $('photoIn').files && $('photoIn').files[0];
-    if (f) analyzePhoto(f);
+    if (f) loadPhoto(f);
   });
-  $('aiRetry').onclick = () => analyzePhoto(null, true);
+  $('aiGo').onclick = () => analyzePhoto();
+  $('aiRetry').onclick = () => analyzePhoto();
   $('aiAddPlate').onclick = () => {
     if (!aiResult || aiEditing()) return;
     logItem(aiResult.name + ' (photo estimate' + (aiScale !== 1 ? ', ' + aiScale + 'x' : '') + ')', aiTotals());
