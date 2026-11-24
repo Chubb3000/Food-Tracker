@@ -4,13 +4,53 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Food Tracker</title>
+<meta name="theme-color" content="#f4f6f8">
+<script>
+  // Dark mode: runs before the page paints so there is no white flash.
+  function themeChoice() {
+    try { var t = localStorage.getItem('theme'); if (t === 'dark' || t === 'auto') return t; } catch (e) {}
+    return 'light';
+  }
+  function applyTheme() {
+    var t = themeChoice();
+    var dark = t === 'dark' || (t === 'auto' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    var m = document.querySelector('meta[name="theme-color"]');
+    if (m) m.setAttribute('content', dark ? '#121614' : '#f4f6f8');
+  }
+  applyTheme();
+  try {
+    var mq = window.matchMedia('(prefers-color-scheme: dark)');
+    if (mq.addEventListener) mq.addEventListener('change', applyTheme);
+    else if (mq.addListener) mq.addListener(applyTheme);
+  } catch (e) {}
+</script>
 <script src="https://unpkg.com/html5-qrcode"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <style>
+  :root {
+    --bg: #f4f6f8; --card: #ffffff; --card2: #f4f6f8; --text: #111111;
+    --muted: #666666; --muted2: #555555; --faint: #777777; --faint2: #888888;
+    --border: #cccccc; --track: #e3e8e3; --tab: #dfe5df; --prog: #dfe3e6; --input: #ffffff;
+    --green-text: #2e7d32; --blue-text: #1565c0; --red-text: #c62828;
+    --okbg: #e8f5e9; --oktext: #1b5e20; --aibox: #eef3fb;
+    --tracked: #c8e6c9; --trackedb: #81c784; --shadow: rgba(0,0,0,0.3);
+  }
+  html[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #121614; --card: #1e2421; --card2: #161b18; --text: #e8ece9;
+    --muted: #aab3ad; --muted2: #b4bcb7; --faint: #8f9a93; --faint2: #8a948d;
+    --border: #47504a; --track: #343c37; --tab: #2b332e; --prog: #343c37; --input: #262d29;
+    --green-text: #66bb6a; --blue-text: #64b5f6; --red-text: #ef9a9a;
+    --okbg: #1c3320; --oktext: #a5d6a7; --aibox: #1b2635;
+    --tracked: #264d2b; --trackedb: #3e7d44; --shadow: rgba(0,0,0,0.6);
+  }
+  html[data-theme="dark"] .bar-fill { filter: brightness(1.25); }
+  html[data-theme="dark"] ::placeholder { color: #86908a; }
   * { box-sizing: border-box; }
-  body { font-family: -apple-system, Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 16px; background: #f4f6f8; }
+  body { font-family: -apple-system, Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 16px; background: var(--bg); color: var(--text); }
   h2 { margin: 8px 0 12px; }
   h3 { margin: 16px 0 8px; }
 
@@ -22,82 +62,82 @@
 
   /* general */
   .row { display: flex; gap: 8px; margin-bottom: 12px; }
-  input, select { padding: 10px; font-size: 1em; border: 1px solid #ccc; border-radius: 8px; min-width: 0; }
+  input, select { padding: 10px; font-size: 1em; border: 1px solid var(--border); border-radius: 8px; min-width: 0; background: var(--input); color: var(--text); }
   /* iPhone zooms the page when you tap a box whose text is smaller than 16px, so never go below that */
   input, select, textarea { font-size: 16px !important; }
-  select { width: 100%; background: white; margin-bottom: 12px; }
+  select { width: 100%; margin-bottom: 12px; }
   #query, #name, #code { flex: 2; }
   #grams, #cals { flex: 1; }
   .row input.small { flex: 1; }
   button { padding: 10px 14px; font-size: 1em; border: none; border-radius: 8px; background: #2e7d32; color: white; cursor: pointer; }
   button.gray { background: #607d8b; }
   ul { list-style: none; padding: 0; margin: 0; }
-  li { background: white; padding: 12px; border-radius: 8px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  li { background: var(--card); padding: 12px; border-radius: 8px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   li button.del { background: #c62828; padding: 6px 10px; }
   ul.pick li { cursor: pointer; flex-direction: column; align-items: flex-start; }
-  ul.pick li small, li .macros { color: #666; font-size: 0.85em; }
-  .box { background: #e8f5e9; padding: 12px; border-radius: 8px; margin-bottom: 12px; display: none; }
-  #servNote { color: #555; font-size: 0.9em; margin-top: 4px; }
+  ul.pick li small, li .macros { color: var(--muted); font-size: 0.85em; }
+  .box { background: var(--okbg); padding: 12px; border-radius: 8px; margin-bottom: 12px; display: none; }
+  #servNote { color: var(--muted2); font-size: 0.9em; margin-top: 4px; }
   #servBtns { margin-top: 8px; margin-bottom: 4px; }
   #servBtns button { padding: 6px 10px; font-size: 0.9em; }
-  #status, #scanStatus { color: #666; margin-bottom: 8px; }
+  #status, #scanStatus { color: var(--muted); margin-bottom: 8px; }
   #reader { width: 100%; margin-bottom: 8px; }
-  .okmsg { background: #e8f5e9; border: 1px solid #2e7d32; color: #1b5e20; padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; display: none; }
-  .fine { color: #777; font-size: 0.8em; margin: 6px 0 12px; }
+  .okmsg { background: var(--okbg); border: 1px solid #2e7d32; color: var(--oktext); padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; display: none; }
+  .fine { color: var(--faint); font-size: 0.8em; margin: 6px 0 12px; }
 
   /* typical-size buttons */
   #sizeBtns { flex-wrap: wrap; margin-bottom: 8px; }
   #sizeBtns button { text-align: left; padding: 8px 12px; font-size: 0.95em; }
 
   /* progress bars */
-  .bars { background: white; padding: 14px; border-radius: 12px; margin-bottom: 16px; }
+  .bars { background: var(--card); padding: 14px; border-radius: 12px; margin-bottom: 16px; }
   .bar-item { margin-bottom: 12px; }
   .bar-item:last-child { margin-bottom: 0; }
   .bar-head { display: flex; justify-content: space-between; gap: 8px; font-size: 0.95em; margin-bottom: 5px; }
-  .bar-head .right { color: #555; text-align: right; }
-  .bar-track { background: #e3e8e3; border-radius: 8px; height: 14px; overflow: hidden; }
+  .bar-head .right { color: var(--muted2); text-align: right; }
+  .bar-track { background: var(--track); border-radius: 8px; height: 14px; overflow: hidden; }
   .bar-fill { height: 100%; border-radius: 8px; }
   .bar-fill.over { background: #c62828; }
 
   /* meals */
-  .meal { background: white; border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+  .meal { background: var(--card); border-radius: 12px; padding: 12px; margin-bottom: 12px; }
   .meal-head { display: flex; justify-content: space-between; align-items: center; }
   .meal-head strong { font-size: 1.1em; }
-  .meal-head .sub { color: #666; font-size: 0.9em; margin-left: 8px; }
+  .meal-head .sub { color: var(--muted); font-size: 0.9em; margin-left: 8px; }
   .meal ul { margin-top: 8px; }
-  .meal li { background: #f4f6f8; margin-bottom: 6px; }
-  .empty { color: #888; font-size: 0.9em; margin-top: 6px; }
+  .meal li { background: var(--card2); margin-bottom: 6px; }
+  .empty { color: var(--faint2); font-size: 0.9em; margin-top: 6px; }
 
   /* settings */
   .field { margin-bottom: 12px; }
   .field label { display: block; margin-bottom: 4px; font-weight: 600; }
   .field input { width: 100%; }
-  #goalHint { color: #555; font-size: 0.9em; margin-bottom: 12px; }
+  #goalHint { color: var(--muted2); font-size: 0.9em; margin-bottom: 12px; }
 
   /* login */
-  .err { color: #c62828; margin-bottom: 10px; }
+  .err { color: var(--red-text); margin-bottom: 10px; }
   .err:empty { display: none; }
-  .show { display: block; margin: -4px 0 12px; font-size: 0.9em; color: #555; }
+  .show { display: block; margin: -4px 0 12px; font-size: 0.9em; color: var(--muted2); }
   .show input { width: auto; }
-  button.link { background: none; color: #1565c0; padding: 0; text-decoration: underline; }
+  button.link { background: none; color: var(--blue-text); padding: 0; text-decoration: underline; }
   .authlinks { margin-top: 14px; }
   #authSubmit { width: 100%; }
 
   /* tabs and day arrows */
   .tabbar { display: flex; gap: 6px; margin-bottom: 12px; }
-  button.tab { flex: 1; background: #dfe5df; color: #333; padding: 10px 4px; font-weight: 600; }
+  button.tab { flex: 1; background: var(--tab); color: var(--text); padding: 10px 4px; font-weight: 600; }
   button.tab.active { background: #2e7d32; color: white; }
   button.gear.active { background: #2e7d32; }
   button:disabled { opacity: 0.35; cursor: default; }
   .daynav { display: flex; gap: 8px; margin-bottom: 12px; align-items: stretch; }
   .daynav button.gray { width: 52px; }
-  button.daylabel { flex: 1; background: white; color: #222; border: 1px solid #ccc; font-weight: 600; }
-  button.daylabel small { display: block; font-weight: 400; color: #666; font-size: 0.75em; margin-top: 2px; }
+  button.daylabel { flex: 1; background: var(--card); color: var(--text); border: 1px solid var(--border); font-weight: 600; }
+  button.daylabel small { display: block; font-weight: 400; color: var(--muted); font-size: 0.75em; margin-top: 2px; }
 
   /* collapsible meals */
   .mealtoggle { display: flex; align-items: baseline; gap: 6px; flex: 1; background: none; color: inherit; padding: 0; border-radius: 0; text-align: left; font-size: 1em; }
   button.mealtoggle { cursor: pointer; }
-  .mealtoggle .chev { width: 1em; color: #555; }
+  .mealtoggle .chev { width: 1em; color: var(--muted2); }
 
   /* sugar and fiber sit under carbs */
   .bar-item.sub { margin-left: 18px; }
@@ -108,60 +148,60 @@
   .calnav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 8px; }
   .calnav button { width: 52px; }
   .calgrid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 10px; }
-  .calhead { text-align: center; color: #666; font-size: 0.8em; padding: 4px 0; }
-  button.calday { padding: 6px 0; min-height: 52px; background: white; color: #222; border: 1px solid #e3e8e3; border-radius: 8px; font-size: 0.95em; display: flex; flex-direction: column; align-items: center; gap: 2px; }
-  button.calday small { font-size: 0.7em; color: #555; }
-  button.calday.tracked { background: #c8e6c9; border-color: #81c784; }
-  button.calday.over small { color: #c62828; font-weight: 700; }
-  button.calday.today { outline: 2px solid #1565c0; }
+  .calhead { text-align: center; color: var(--muted); font-size: 0.8em; padding: 4px 0; }
+  button.calday { padding: 6px 0; min-height: 52px; background: var(--card); color: var(--text); border: 1px solid var(--track); border-radius: 8px; font-size: 0.95em; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  button.calday small { font-size: 0.7em; color: var(--muted2); }
+  button.calday.tracked { background: var(--tracked); border-color: var(--trackedb); }
+  button.calday.over small { color: var(--red-text); font-weight: 700; }
+  button.calday.today { outline: 2px solid var(--blue-text); }
 
   /* photo AI */
-  #photoNote { width: 100%; margin-bottom: 8px; padding: 10px; font-size: 1em; font-family: inherit; border: 1px solid #ccc; border-radius: 8px; resize: vertical; min-height: 64px; }
+  #photoNote { width: 100%; margin-bottom: 8px; padding: 10px; font-size: 1em; font-family: inherit; border: 1px solid var(--border); border-radius: 8px; resize: vertical; min-height: 64px; background: var(--input); color: var(--text); }
   #photoNoteLbl { font-weight: 600; margin: 6px 0 4px; }
   .pop { position: fixed; left: 0; top: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.45); z-index: 50; align-items: center; justify-content: center; padding: 16px; }
-  .popCard { background: white; border-radius: 14px; padding: 18px; width: 100%; max-width: 380px; box-shadow: 0 8px 30px rgba(0,0,0,0.3); }
-  .popTitle { font-size: 0.8em; font-weight: 700; color: #2e7d32; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+  .popCard { background: var(--card); color: var(--text); border-radius: 14px; padding: 18px; width: 100%; max-width: 380px; box-shadow: 0 8px 30px var(--shadow); }
+  .popTitle { font-size: 0.8em; font-weight: 700; color: var(--green-text); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
   .popCard .row button { flex: 1; }
   .menuBtn { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; padding: 16px 18px; font-size: 1.1em; font-weight: 600; margin: 10px 0 0; border-radius: 12px; }
   .menuBtn .mi { font-size: 1.5em; width: 1.4em; text-align: center; }
   .menuBtn small { display: block; font-weight: 400; font-size: 0.75em; opacity: 0.9; margin-top: 2px; }
-  #aiProg { display: none; height: 10px; background: #dfe3e6; border-radius: 6px; overflow: hidden; margin: 6px 0 10px; }
+  #aiProg { display: none; height: 10px; background: var(--prog); border-radius: 6px; overflow: hidden; margin: 6px 0 10px; }
   #aiProgBar { height: 100%; width: 0; background: #2e7d32; border-radius: 6px; transition: width 0.25s ease; }
-  #aiBox { background: #eef3fb; }
+  #aiBox { background: var(--aibox); }
   #aiBox img { width: 100%; max-height: 220px; object-fit: cover; border-radius: 8px; margin-bottom: 8px; display: block; }
-  #aiBox ul li { background: white; }
+  #aiBox ul li { background: var(--card); }
   .aiBtns { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
   #aiBox li button.edit { padding: 6px 10px; }
   #aiBox li.aiEdit { display: block; }
   #aiBox li.aiEdit input.aiName { width: 100%; margin-bottom: 8px; }
   .aiGrid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 6px; }
-  .aiGrid label { font-size: 0.8em; color: #555; display: block; }
+  .aiGrid label { font-size: 0.8em; color: var(--muted2); display: block; }
   .aiGrid input { width: 100%; margin-top: 2px; }
   #aiBox li.aiEdit .aiBtns { margin-top: 8px; }
-  #aiBox li.aiEdit .err { color: #c62828; font-size: 0.9em; margin-top: 6px; }
+  #aiBox li.aiEdit .err { color: var(--red-text); font-size: 0.9em; margin-top: 6px; }
   #aiScale { flex-wrap: wrap; margin-bottom: 8px; }
   #aiScale button { padding: 6px 10px; font-size: 0.9em; }
   #aiScale button.on { background: #1565c0; }
   #photoStatus:empty { display: none; }
-  #photoStatus { margin-bottom: 8px; color: #555; }
-  #photoStatus.err { color: #c62828; }
+  #photoStatus { margin-bottom: 8px; color: var(--muted2); }
+  #photoStatus.err { color: var(--red-text); }
 
   /* weight */
   #wDate { flex: 2; }
   #wIn { flex: 1.5; }
   #wChart svg { width: 100%; height: auto; display: block; }
-  #wChart .wline { fill: none; stroke: #1565c0; stroke-width: 2; }
-  #wChart .wdot { fill: #1565c0; }
-  #wChart .wgrid { stroke: #e3e8e3; stroke-width: 1; }
-  #wChart text { fill: #666; font-size: 10px; }
-  #wChart text.wlast { fill: #1565c0; font-size: 11px; font-weight: 700; }
-  #wChart .wempty { color: #666; font-size: 0.9em; padding: 12px 0; text-align: center; }
+  #wChart .wline { fill: none; stroke: var(--blue-text); stroke-width: 2; }
+  #wChart .wdot { fill: var(--blue-text); }
+  #wChart .wgrid { stroke: var(--track); stroke-width: 1; }
+  #wChart text { fill: var(--muted); font-size: 10px; }
+  #wChart text.wlast { fill: var(--blue-text); font-size: 11px; font-weight: 700; }
+  #wChart .wempty { color: var(--muted); font-size: 0.9em; padding: 12px 0; text-align: center; }
   #wRange button { padding: 6px 12px; font-size: 0.9em; }
   #wRange button.on { background: #1565c0; }
   button.calday { position: relative; }
-  .calday .chk { color: #2e7d32; font-weight: 700; font-size: 1.25em; line-height: 1; margin-right: 2px; }
+  .calday .chk { color: var(--green-text); font-weight: 700; font-size: 1.25em; line-height: 1; margin-right: 2px; }
   .calday .wlog { position: absolute; top: 7px; left: 6px; width: 7px; height: 7px; border-radius: 50%; background: #1565c0; }
-  .meal-head .sub.plan { color: #2e7d32; }
+  .meal-head .sub.plan { color: var(--green-text); }
   .meal-head .sub.plan.next { font-weight: 700; }
 </style>
 </head>
@@ -299,16 +339,15 @@
 
     <div id="paneScan" style="display:none">
       <h3>Scan a barcode</h3>
-    <div class="row">
-      <button id="scanBtn">Scan Barcode</button>
-      <button id="stopBtn" class="gray" style="display:none">Stop</button>
-    </div>
+    <div class="fine" style="margin-top:0">Hold a barcode in front of the camera. It scans by itself.</div>
     <div id="reader"></div>
+    <div id="scanStatus"></div>
+    <button type="button" class="gray" id="camRetry" style="display:none;margin-bottom:12px">Try the camera again</button>
+    <div class="fine">Camera not working? Type the number under the barcode:</div>
     <div class="row">
-      <input id="code" placeholder="Or type barcode number" inputmode="numeric">
+      <input id="code" placeholder="Barcode number" inputmode="numeric">
       <button id="lookupBtn">Look up</button>
     </div>
-    <div id="scanStatus"></div>
 
     </div>
 
@@ -367,7 +406,11 @@
   <!-- SETTINGS -->
   <div id="settingsView" style="display:none">
     <button class="gray" id="settingsBackBtn" style="margin-bottom:8px">&larr; Back to home</button>
-    <h2>Daily goals</h2>
+    <h2>Appearance</h2>
+    <div class="field"><label for="themeSel">Theme</label>
+      <select id="themeSel"><option value="light">Light</option><option value="dark">Dark</option><option value="auto">Match my phone</option></select>
+      <div class="fine" style="margin:-6px 0 0">Changes right away. Saved on this device.</div></div>
+    <h2 style="margin-top:28px">Daily goals</h2>
     <div class="field"><label for="gCal">Calories</label><input id="gCal" type="number" inputmode="numeric" min="0"></div>
     <div class="field"><label for="gP">Protein (grams)</label><input id="gP" type="number" inputmode="numeric" min="0"></div>
     <div class="field"><label for="gC">Carbs (grams)</label><input id="gC" type="number" inputmode="numeric" min="0"></div>
@@ -406,11 +449,16 @@
 
 <div id="scanPop" class="pop" style="display:none">
   <div class="popCard" role="dialog" aria-live="polite">
-    <div class="popTitle">Found it</div>
+    <div class="popTitle" id="popTitle">Found it</div>
     <div id="popName" style="font-weight:600"></div>
-    <div id="popInfo" class="fine" style="margin:6px 0 12px"></div>
-    <div class="row"><button id="popAgain">Scan another</button><button id="popChange" class="gray">Change amount</button></div>
-    <div class="row" style="margin-bottom:0"><button id="popUndo" class="gray">Undo</button><button id="popDone" class="gray">Close</button></div>
+    <div id="popInfo" class="fine" style="margin:6px 0 10px"></div>
+    <div id="popAmtRow">
+      <label for="popQty" class="fine" style="display:block;margin:0 0 4px">Amount (grams or ml)</label>
+      <input id="popQty" type="number" step="any" inputmode="decimal" style="width:100%">
+      <div id="popCals" class="fine" style="margin:6px 0 10px"></div>
+    </div>
+    <div id="popErr" class="err"></div>
+    <div class="row" style="margin-bottom:0"><button id="popAdd">Add</button><button id="popAgain" class="gray">Try again</button></div>
   </div>
 </div>
 
@@ -1113,6 +1161,7 @@
     $('gS').value = goals.s;
     $('gFi').value = goals.fi;
     $('unitSel').value = unit;
+    $('themeSel').value = themeChoice();
     $('aiKey').value = aiKey;
     updateKeyKind();
     $('aiModel').value = aiModel;
@@ -2764,91 +2813,133 @@
 
   // ---------- Barcodes ----------
 
-  // ---- Scanned product: add 1 serving right away and show a popup (with Undo)
-  let lastScan = null;
+  // The camera starts by itself when this page opens and keeps looking. When it reads a
+  // code, a card shows the product name with Add and Try again.
+  let lastScan = null;      // { code, it } for the card on screen (it is null when nothing was found)
+  let scanBusy = false;     // true during a lookup and while the card is open, so more reads are ignored
+  let scanSeq = 0, lookSeq = 0;
+  let coolCode = '', coolUntil = 0;
+  let scanStopP = Promise.resolve();
+
+  // After Add or Try again, ignore the same barcode for a few seconds so it does not pop up again at once
+  function cool(code) { coolCode = code; coolUntil = Date.now() + 3000; }
 
   function hidePop() {
     $('scanPop').style.display = 'none';
     lastScan = null;
+    scanBusy = false;
+    lookSeq++;
   }
 
-  function autoAddScanned(it) {
-    const qty = it.servingG;
-    const d = describePick(it, qty);
-    const addP = logItem(d.name, d.a, true);
-    if (!addP) return;
-    lastScan = { it: it, addP: addP, name: d.name };
-    $('popName').textContent = it.name + (it.brand ? ' (' + it.brand + ')' : '');
-    const bits = [];
-    if (d.a.p != null) bits.push('P ' + d.a.p + 'g', 'C ' + d.a.c + 'g', 'F ' + d.a.f + 'g');
-    $('popInfo').textContent = 'Added 1 serving (' + qty + ' g) to ' + mealLabel(currentMeal) + ': ' + d.a.k + ' cal' + (bits.length ? '  -  ' + bits.join(' ') : '');
+  function updatePopCals() {
+    const s = lastScan;
+    if (!s || !s.it) return;
+    const qty = Number($('popQty').value) || 0;
+    const a = amountsFor(s.it, qty);
+    let text = 'About ' + a.k + ' calories';
+    text += a.p != null ? ' (P ' + a.p + 'g, C ' + a.c + 'g, F ' + a.f + 'g)' : ' (protein, carbs and fat not listed)';
+    $('popCals').textContent = text;
+  }
+
+  // it = the product (or null when there is nothing to add)
+  function showScanCard(title, name, info, it, code) {
+    lastScan = { code: code, it: it };
+    $('popTitle').textContent = title;
+    $('popName').textContent = name;
+    $('popInfo').textContent = info;
+    $('popErr').textContent = '';
+    $('popAmtRow').style.display = it ? 'block' : 'none';
+    $('popAdd').style.display = it ? 'inline-block' : 'none';
+    if (it) {
+      $('popQty').value = it.servingG ? round1(it.servingG) : 100;
+      updatePopCals();
+    }
+    $('scanStatus').textContent = '';
     $('scanPop').style.display = 'flex';
   }
 
-  function undoScanned() {
-    const s = lastScan;
-    if (!s) return;
-    s.addP.then(ref => ref.delete()).catch(syncError);
-    openMeals[currentMeal] = true;
-  }
-
   async function lookupBarcode(code) {
-    const status = $('scanStatus');
-    status.textContent = 'Looking up ' + code + '...';
+    scanBusy = true;
+    const my = ++lookSeq;
+    $('scanStatus').textContent = 'Looking up ' + code + '...';
+    let card;
     try {
       const res = await fetch('https://world.openfoodfacts.org/api/v2/product/' + encodeURIComponent(code) + '?fields=product_name,brands,nutriments,serving_size,serving_quantity');
       const json = await res.json();
       if (json.status !== 1 || !json.product) {
-        status.textContent = 'Product not found. Try searching by name or add by hand.';
-        return;
+        card = ['Not found', code, 'This barcode is not in the food database. Tap Try again, or go back and search by name or add by hand.', null];
+      } else {
+        const p = json.product;
+        if (!p.nutriments || p.nutriments['energy-kcal_100g'] == null) {
+          card = ['No calorie info', p.product_name || code, 'It has no calorie info listed. Tap Try again, or go back and add by hand.', null];
+        } else {
+          if (!p.product_name) p.product_name = code;
+          const it = offItem(p);
+          const info = (it.servingG ? '1 serving = ' + round1(it.servingG) + ' g.' : 'No serving size is listed, so type how many grams (or ml) you had.') + ' Adds to ' + mealLabel(currentMeal) + '.';
+          card = ['Found it', it.name + (it.brand ? ' (' + it.brand + ')' : ''), info, it];
+        }
       }
-      const p = json.product;
-      if (!p.nutriments || p.nutriments['energy-kcal_100g'] == null) {
-        status.textContent = 'Found it, but there is no calorie info. Add by hand instead.';
-        return;
-      }
-      if (!p.product_name) p.product_name = code;
-      status.textContent = 'Found: ' + p.product_name;
-      const it = offItem(p);
-      if (it.servingG) autoAddScanned(it);   // known serving size: log 1 serving right away
-      else pick(it);                          // no serving size listed: the person has to enter grams
     } catch (err) {
-      status.textContent = 'Lookup failed. Check your internet and try again.';
+      card = ['Lookup failed', code, 'Check your internet connection, then tap Try again.', null];
     }
+    if (my !== lookSeq) return;   // the person left this page while we were looking
+    showScanCard(card[0], card[1], card[2], card[3], code);
   }
 
-  async function stopScan() {
-    if (scanner) {
-      try { await scanner.stop(); } catch (e) {}
-      try { scanner.clear(); } catch (e) {}
-      scanner = null;
-    }
-    $('stopBtn').style.display = 'none';
-    $('scanBtn').style.display = 'inline-block';
+  function stopScan() {
+    scanSeq++;
+    const sc = scanner;
+    scanner = null;
+    if (!sc) return scanStopP;
+    scanStopP = scanStopP.then(async () => {
+      try { await sc.stop(); } catch (e) {}
+      try { sc.clear(); } catch (e) {}
+    });
+    return scanStopP;
   }
 
   async function startScan() {
+    if (scanner) return;   // already looking
+    const my = ++scanSeq;
     const status = $('scanStatus');
+    $('camRetry').style.display = 'none';
     status.textContent = 'Starting camera...';
-    scanner = new Html5Qrcode('reader');
+    await scanStopP;
+    if (my !== scanSeq) return;
+    let sc = null;
     try {
-      await scanner.start(
+      sc = new Html5Qrcode('reader');
+      scanner = sc;
+      await sc.start(
         { facingMode: 'environment' },
         { fps: 10, qrbox: { width: 250, height: 150 } },
         (decodedText) => {
-          stopScan();
+          if (scanBusy) return;
+          if (decodedText === coolCode && Date.now() < coolUntil) return;
+          try { if (navigator.vibrate) navigator.vibrate(60); } catch (e) {}
           $('code').value = decodedText;
           lookupBarcode(decodedText);
         }
       );
-      status.textContent = 'Point the camera at a barcode.';
-      $('scanBtn').style.display = 'none';
-      $('stopBtn').style.display = 'inline-block';
+      if (my !== scanSeq) {   // the person left this page while the camera was starting
+        try { await sc.stop(); } catch (e) {}
+        try { sc.clear(); } catch (e) {}
+        return;
+      }
+      if (!scanBusy) status.textContent = 'Point the camera at a barcode.';
     } catch (err) {
-      status.textContent = 'Could not start the camera. Allow camera access, or type the barcode number instead.';
-      scanner = null;
+      if (my !== scanSeq) return;
+      if (scanner === sc) scanner = null;
+      status.textContent = 'Could not start the camera. Allow camera access, or type the barcode number below.';
+      $('camRetry').style.display = 'inline-block';
     }
   }
+
+  // Coming back to the app from another app can leave the camera frozen, so restart it
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden || curView !== 'add' || curPane !== 'scan') return;
+    stopScan().then(() => { if (curView === 'add' && curPane === 'scan') startScan(); });
+  });
 
   // ---------- Buttons ----------
 
@@ -2857,6 +2948,10 @@
   $('backBtn').onclick = goHome;
   $('settingsBackBtn').onclick = goHome;
   $('saveGoals').onclick = saveGoals;
+  $('themeSel').onchange = () => {
+    try { localStorage.setItem('theme', $('themeSel').value); } catch (e) {}
+    applyTheme();
+  };
   $('aiKey').addEventListener('input', updateKeyKind);
   ['gCal', 'gP', 'gC', 'gF'].forEach(id => $(id).addEventListener('input', updateGoalHint));
 
@@ -2949,29 +3044,35 @@
   $('menuScan').onclick = () => openPane('scan');
   $('menuHand').onclick = () => openPane('hand');
   $('paneBackBtn').onclick = () => openPane('menu');
-  $('popUndo').onclick = () => {
+  $('popQty').addEventListener('input', updatePopCals);
+  $('popAdd').onclick = () => {
     const s = lastScan;
-    undoScanned();
+    if (!s || !s.it) return;
+    const qty = Number($('popQty').value) || 0;
+    if (qty <= 0) { $('popErr').textContent = 'Type how many grams (or ml) you had.'; return; }
+    const d = describePick(s.it, qty);
+    const addP = logItem(d.name, d.a, true);
+    if (!addP) { $('popErr').textContent = 'Could not save that. Check your connection and tap Add again.'; return; }
+    cool(s.code);
     hidePop();
-    $('scanStatus').textContent = s ? 'Removed ' + s.it.name + '.' : '';
+    $('code').value = '';
+    $('scanStatus').textContent = 'Point the camera at a barcode.';
+    showMsg('Added ' + d.name + ' (' + d.a.k + ' cal) to ' + mealLabel(currentMeal) + '. Scan another, or tap Back.');
   };
-  $('popChange').onclick = () => {
+  $('popAgain').onclick = () => {
     const s = lastScan;
-    if (!s) return;
-    undoScanned();
+    if (s) cool(s.code);
     hidePop();
-    $('scanStatus').textContent = 'Choose how much you had, then tap Add.';
-    pick(s.it);
+    $('code').value = '';
+    $('scanStatus').textContent = 'Point the camera at a barcode.';
   };
-  $('popAgain').onclick = () => { hidePop(); $('scanStatus').textContent = ''; startScan(); };
-  $('popDone').onclick = hidePop;
-  $('scanPop').addEventListener('click', (e) => { if (e.target === $('scanPop')) hidePop(); });
-  $('scanBtn').onclick = startScan;
-  $('stopBtn').onclick = stopScan;
-  $('lookupBtn').onclick = () => {
+  $('camRetry').onclick = startScan;
+  const typedLookup = () => {
     const c = $('code').value.trim();
-    if (c) lookupBarcode(c);
+    if (c && !scanBusy) lookupBarcode(c);
   };
+  $('lookupBtn').onclick = typedLookup;
+  $('code').addEventListener('keydown', (e) => { if (e.key === 'Enter') typedLookup(); });
   $('grams').addEventListener('input', updatePickCals);
   $('searchBtn').onclick = search;
   $('query').addEventListener('keydown', (e) => { if (e.key === 'Enter') search(); });
