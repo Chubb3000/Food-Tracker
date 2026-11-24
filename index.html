@@ -118,6 +118,10 @@
   /* photo AI */
   #photoNote { width: 100%; margin-bottom: 8px; padding: 10px; font-size: 1em; font-family: inherit; border: 1px solid #ccc; border-radius: 8px; resize: vertical; min-height: 64px; }
   #photoNoteLbl { font-weight: 600; margin: 6px 0 4px; }
+  .pop { position: fixed; left: 0; top: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.45); z-index: 50; align-items: center; justify-content: center; padding: 16px; }
+  .popCard { background: white; border-radius: 14px; padding: 18px; width: 100%; max-width: 380px; box-shadow: 0 8px 30px rgba(0,0,0,0.3); }
+  .popTitle { font-size: 0.8em; font-weight: 700; color: #2e7d32; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+  .popCard .row button { flex: 1; }
   .menuBtn { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; padding: 16px 18px; font-size: 1.1em; font-weight: 600; margin: 10px 0 0; border-radius: 12px; }
   .menuBtn .mi { font-size: 1.5em; width: 1.4em; text-align: center; }
   .menuBtn small { display: block; font-weight: 400; font-size: 0.75em; opacity: 0.9; margin-top: 2px; }
@@ -399,6 +403,16 @@
     <div class="fine" id="acctLine"></div>
     <button class="gray" id="logoutBtn">Log out</button>
   </div>
+
+<div id="scanPop" class="pop" style="display:none">
+  <div class="popCard" role="dialog" aria-live="polite">
+    <div class="popTitle">Found it</div>
+    <div id="popName" style="font-weight:600"></div>
+    <div id="popInfo" class="fine" style="margin:6px 0 12px"></div>
+    <div class="row"><button id="popAgain">Scan another</button><button id="popChange" class="gray">Change amount</button></div>
+    <div class="row" style="margin-bottom:0"><button id="popUndo" class="gray">Undo</button><button id="popDone" class="gray">Close</button></div>
+  </div>
+</div>
 
 <script>
   // Replace DEMO_KEY with your own free key from fdc.nal.usda.gov/api-key-signup
@@ -1006,7 +1020,7 @@
     $('tabCal').classList.toggle('active', name === 'cal');
     $('tabWeight').classList.toggle('active', name === 'weight');
     $('settingsBtn').classList.toggle('active', name === 'settings');
-    if (name !== 'add') stopScan();
+    if (name !== 'add') { stopScan(); hidePop(); }
     if (name !== 'cal') stopMonth();
     window.scrollTo(0, 0);
   }
@@ -1025,6 +1039,7 @@
     $('scanStatus').textContent = '';
     $('query').value = '';
     $('code').value = '';
+    hidePop();
     aiToken++;
     aiResult = null;
     aiImg = null;
@@ -1048,6 +1063,7 @@
       $('pane' + p.charAt(0).toUpperCase() + p.slice(1)).style.display = (p === name) ? 'block' : 'none';
     });
     $('paneBackBtn').style.display = (name === 'menu') ? 'none' : 'inline-block';
+    hidePop();
     if (name !== 'scan') stopScan();
     window.scrollTo(0, 0);
   }
@@ -1590,16 +1606,19 @@
     if (amounts.s != null) item.s = amounts.s;
     if (amounts.fi != null) item.fi = amounts.fi;
     $('addErr').textContent = '';
+    let addP;
     try {
-      entriesRef().add(item).catch(syncError);
+      addP = entriesRef().add(item);
+      addP.catch(syncError);
     } catch (e) {
       syncError(e);
-      return;
+      return null;
     }
     openMeals[currentMeal] = true;
-    if (quiet) return;
+    if (quiet) return addP;
     resetPicker();
     showMsg('Added ' + name + ' (' + amounts.k + ' cal) to ' + mealLabel(currentMeal) + '.');
+    return addP;
   }
 
   // ---------- Add by hand ----------
@@ -1857,6 +1876,15 @@
       s: it.s != null ? round1(it.s * mult) : null,
       fi: it.fi != null ? round1(it.fi * mult) : null
     };
+  }
+
+  // The name that gets logged and the amounts, for qty servings (or grams)
+  function describePick(it, qty) {
+    const a = amountsFor(it, qty);
+    let name;
+    if (it.mode === 'servings') name = it.name + ' (' + it.brand + ')' + (qty === 1 ? '' : ' x' + qty);
+    else name = it.name + ' (' + qty + 'g)';
+    return { name: name, a: a };
   }
 
   function addAmountButton(btns, label, value) {
@@ -2736,6 +2764,34 @@
 
   // ---------- Barcodes ----------
 
+  // ---- Scanned product: add 1 serving right away and show a popup (with Undo)
+  let lastScan = null;
+
+  function hidePop() {
+    $('scanPop').style.display = 'none';
+    lastScan = null;
+  }
+
+  function autoAddScanned(it) {
+    const qty = it.servingG;
+    const d = describePick(it, qty);
+    const addP = logItem(d.name, d.a, true);
+    if (!addP) return;
+    lastScan = { it: it, addP: addP, name: d.name };
+    $('popName').textContent = it.name + (it.brand ? ' (' + it.brand + ')' : '');
+    const bits = [];
+    if (d.a.p != null) bits.push('P ' + d.a.p + 'g', 'C ' + d.a.c + 'g', 'F ' + d.a.f + 'g');
+    $('popInfo').textContent = 'Added 1 serving (' + qty + ' g) to ' + mealLabel(currentMeal) + ': ' + d.a.k + ' cal' + (bits.length ? '  -  ' + bits.join(' ') : '');
+    $('scanPop').style.display = 'flex';
+  }
+
+  function undoScanned() {
+    const s = lastScan;
+    if (!s) return;
+    s.addP.then(ref => ref.delete()).catch(syncError);
+    openMeals[currentMeal] = true;
+  }
+
   async function lookupBarcode(code) {
     const status = $('scanStatus');
     status.textContent = 'Looking up ' + code + '...';
@@ -2753,7 +2809,9 @@
       }
       if (!p.product_name) p.product_name = code;
       status.textContent = 'Found: ' + p.product_name;
-      pick(offItem(p));
+      const it = offItem(p);
+      if (it.servingG) autoAddScanned(it);   // known serving size: log 1 serving right away
+      else pick(it);                          // no serving size listed: the person has to enter grams
     } catch (err) {
       status.textContent = 'Lookup failed. Check your internet and try again.';
     }
@@ -2891,6 +2949,23 @@
   $('menuScan').onclick = () => openPane('scan');
   $('menuHand').onclick = () => openPane('hand');
   $('paneBackBtn').onclick = () => openPane('menu');
+  $('popUndo').onclick = () => {
+    const s = lastScan;
+    undoScanned();
+    hidePop();
+    $('scanStatus').textContent = s ? 'Removed ' + s.it.name + '.' : '';
+  };
+  $('popChange').onclick = () => {
+    const s = lastScan;
+    if (!s) return;
+    undoScanned();
+    hidePop();
+    $('scanStatus').textContent = 'Choose how much you had, then tap Add.';
+    pick(s.it);
+  };
+  $('popAgain').onclick = () => { hidePop(); $('scanStatus').textContent = ''; startScan(); };
+  $('popDone').onclick = hidePop;
+  $('scanPop').addEventListener('click', (e) => { if (e.target === $('scanPop')) hidePop(); });
   $('scanBtn').onclick = startScan;
   $('stopBtn').onclick = stopScan;
   $('lookupBtn').onclick = () => {
@@ -2905,14 +2980,8 @@
     if (!picked) return;
     const qty = Number($('grams').value) || 0;
     if (qty <= 0) return;
-    const a = amountsFor(picked, qty);
-    let name;
-    if (picked.mode === 'servings') {
-      name = picked.name + ' (' + picked.brand + ')' + (qty === 1 ? '' : ' x' + qty);
-    } else {
-      name = picked.name + ' (' + qty + 'g)';
-    }
-    logItem(name, a);
+    const d = describePick(picked, qty);
+    logItem(d.name, d.a);
   };
 
   startApp();
