@@ -118,6 +118,9 @@
   /* photo AI */
   #photoNote { width: 100%; margin-bottom: 8px; padding: 10px; font-size: 1em; font-family: inherit; border: 1px solid #ccc; border-radius: 8px; resize: vertical; min-height: 64px; }
   #photoNoteLbl { font-weight: 600; margin: 6px 0 4px; }
+  .menuBtn { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; padding: 16px 18px; font-size: 1.1em; font-weight: 600; margin: 10px 0 0; border-radius: 12px; }
+  .menuBtn .mi { font-size: 1.5em; width: 1.4em; text-align: center; }
+  .menuBtn small { display: block; font-weight: 400; font-size: 0.75em; opacity: 0.9; margin-top: 2px; }
   #aiProg { display: none; height: 10px; background: #dfe3e6; border-radius: 6px; overflow: hidden; margin: 6px 0 10px; }
   #aiProgBar { height: 100%; width: 0; background: #2e7d32; border-radius: 6px; transition: width 0.25s ease; }
   #aiBox { background: #eef3fb; }
@@ -209,7 +212,10 @@
 
   <!-- ADD FOOD -->
   <div id="addView" style="display:none">
-    <button class="gray" id="backBtn" style="margin-bottom:8px">&larr; Done, back to home</button>
+    <div class="row" style="margin-bottom:8px">
+      <button class="gray" id="paneBackBtn" style="display:none">&larr; Back</button>
+      <button class="gray" id="backBtn">Done, back to home</button>
+    </div>
     <h2 id="addTitle">Add food</h2>
     <div class="okmsg" id="addMsg"></div>
     <div class="err" id="addErr"></div>
@@ -226,7 +232,36 @@
       <div id="pickCals"></div>
     </div>
 
-    <h3>Photo of your meal</h3>
+
+    <div id="paneMenu">
+      <div class="row">
+        <input id="menuQuery" type="text" enterkeyhint="search" placeholder="Search foods or restaurants" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+        <button id="menuSearchBtn">Search</button>
+      </div>
+      <div class="fine" style="margin-top:0">Includes fast food and restaurant menus.</div>
+      <button class="menuBtn" id="menuPhoto"><span class="mi">&#128247;</span><span>Take a picture<small>AI guesses the food and macros</small></span></button>
+      <button class="menuBtn" id="menuScan"><span class="mi">&#9783;</span><span>Scan a barcode<small>For packaged food</small></span></button>
+      <button class="menuBtn" id="menuHand"><span class="mi">&#9998;</span><span>Add by hand<small>Type in the numbers yourself</small></span></button>
+    </div>
+
+    <div id="paneSearch" style="display:none">
+      <h3>Search foods &amp; restaurants</h3>
+      <div class="row">
+        <input id="query" enterkeyhint="search" placeholder="e.g. banana, big mac, chipotle chicken">
+        <button id="searchBtn">Search</button>
+      </div>
+    <div id="status"></div>
+    <ul id="results" class="pick"></ul>
+
+    <h3>Or pick a fast food place or restaurant</h3>
+    <select id="chainSel"></select>
+    <ul id="chainItems" class="pick"></ul>
+    <div class="fine">Restaurant numbers come from nutrition listings checked in November 2026 (FatSecret, FastFoodNutrition.org, Eat This Not That, and chain websites). Recipes and portions change and custom orders differ, so treat them as close estimates. Tap an item, choose how many you had, and add it. You can add several items in a row, like each part of a burrito bowl.</div>
+
+    </div>
+
+    <div id="panePhoto" style="display:none">
+      <h3>Take a picture</h3>
     <div class="fine" style="margin-top:0">1) Take or choose a photo. 2) Add a description if you like. 3) Tap Analyze photo. AI guesses what it is and the macros.</div>
     <div class="row">
       <button id="photoBtn">&#128247; Take or choose a photo</button>
@@ -256,20 +291,10 @@
       </div>
     </div>
 
-    <h3>Search a food, drink or menu item</h3>
-    <div class="row">
-      <input id="query" placeholder="e.g. banana, big mac, chipotle chicken">
-      <button id="searchBtn">Search</button>
     </div>
-    <div id="status"></div>
-    <ul id="results" class="pick"></ul>
 
-    <h3>Fast food &amp; restaurants</h3>
-    <select id="chainSel"></select>
-    <ul id="chainItems" class="pick"></ul>
-    <div class="fine">Restaurant numbers come from nutrition listings checked in November 2026 (FatSecret, FastFoodNutrition.org, Eat This Not That, and chain websites). Recipes and portions change and custom orders differ, so treat them as close estimates. Tap an item, choose how many you had, and add it. You can add several items in a row, like each part of a burrito bowl.</div>
-
-    <h3>Scan a barcode</h3>
+    <div id="paneScan" style="display:none">
+      <h3>Scan a barcode</h3>
     <div class="row">
       <button id="scanBtn">Scan Barcode</button>
       <button id="stopBtn" class="gray" style="display:none">Stop</button>
@@ -281,7 +306,10 @@
     </div>
     <div id="scanStatus"></div>
 
-    <h3>Or add by hand</h3>
+    </div>
+
+    <div id="paneHand" style="display:none">
+      <h3>Add by hand</h3>
     <form id="form">
       <div class="row">
         <input id="name" placeholder="Food" required>
@@ -299,6 +327,7 @@
       <button type="submit">Add</button>
       <div class="fine">Protein, carbs, fat, sugar and fiber are optional. Sugar and fiber are already part of carbs.</div>
     </form>
+    </div>
   </div>
 
   <!-- CALENDAR -->
@@ -1009,6 +1038,37 @@
     if (typeof progStop === 'function') progStop(false);
   }
 
+  // The Add screen is a menu (search bar + 3 buttons). Each choice opens its own page.
+  const PANES = ['menu', 'search', 'photo', 'scan', 'hand'];
+  let curPane = 'menu';
+
+  function showPane(name) {
+    curPane = name;
+    PANES.forEach(p => {
+      $('pane' + p.charAt(0).toUpperCase() + p.slice(1)).style.display = (p === name) ? 'block' : 'none';
+    });
+    $('paneBackBtn').style.display = (name === 'menu') ? 'none' : 'inline-block';
+    if (name !== 'scan') stopScan();
+    window.scrollTo(0, 0);
+  }
+
+  function openPane(name, opts) {
+    resetPicker();
+    $('addMsg').style.display = 'none';
+    $('addErr').textContent = '';
+    showPane(name);
+    if (name === 'menu') $('menuQuery').value = '';
+    if (name === 'search') {
+      $('chainSel').value = '';
+      $('chainItems').innerHTML = '';
+      const q = (opts && opts.q) || '';
+      if (q) { $('query').value = q; search(); }
+      else $('query').focus();
+    } else if (name === 'scan') {
+      startScan();
+    }
+  }
+
   function openAdd(mealKey) {
     currentMeal = mealKey;
     resetPicker();
@@ -1017,6 +1077,8 @@
     $('addErr').textContent = '';
     $('chainSel').value = '';
     $('chainItems').innerHTML = '';
+    $('menuQuery').value = '';
+    showPane('menu');
     showView('add');
   }
 
@@ -2823,6 +2885,12 @@
     $('authSubmit').disabled = false;
   });
 
+  $('menuSearchBtn').onclick = () => openPane('search', { q: $('menuQuery').value.trim() });
+  $('menuQuery').addEventListener('keydown', (e) => { if (e.key === 'Enter') openPane('search', { q: $('menuQuery').value.trim() }); });
+  $('menuPhoto').onclick = () => openPane('photo');
+  $('menuScan').onclick = () => openPane('scan');
+  $('menuHand').onclick = () => openPane('hand');
+  $('paneBackBtn').onclick = () => openPane('menu');
   $('scanBtn').onclick = startScan;
   $('stopBtn').onclick = stopScan;
   $('lookupBtn').onclick = () => {
