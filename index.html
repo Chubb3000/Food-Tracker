@@ -2086,6 +2086,53 @@
     return { ok: res.ok, net: false, status: res.status, json: json, msg: msg };
   }
 
+  // Throws a friendly message when the key or the credit is the problem
+  function keyProblem(status, msg, who) {
+    const bad = status === 400 || status === 401 || status === 403;
+    if (bad && /credit balance|billing|purchase credits/i.test(msg)) {
+      throw friendly('Your Claude account has no credit left. Add a few dollars at platform.claude.com (Billing), then try again.');
+    }
+    if (bad && /api key|api_key|key not valid|x-api-key|unregistered|unauthenticated|authentication/i.test(msg)) {
+      throw friendly(who + ' did not accept your key. Check it in Settings (Photo AI).');
+    }
+  }
+
+  // Ask the service which models this key can use (used when the built-in names are all rejected)
+  async function listModels(claude) {
+    let res;
+    try {
+      res = claude
+        ? await fetch('https://api.anthropic.com/v1/models?limit=100', { headers: { 'x-api-key': currentAiKey(), 'anthropic-version': '2026-10-21', 'anthropic-dangerous-direct-browser-access': 'true' } })
+        : await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': currentAiKey() } });
+    } catch (e) { return { ids: [], status: 0, msg: 'network' }; }
+    let json = null;
+    try { json = await res.json(); } catch (e) {}
+    const msg = (json && json.error && json.error.message) ? String(json.error.message) : ('HTTP ' + res.status);
+    let ids = [];
+    if (res.ok && json) {
+      if (claude) {
+        ids = (Array.isArray(json.data) ? json.data : []).map(x => x && x.id).filter(x => typeof x === 'string');
+        const rank = (m) => /sonnet/i.test(m) ? 0 : /haiku/i.test(m) ? 1 : /opus/i.test(m) ? 2 : 3;
+        ids = ids.map((m, i) => ({ m: m, i: i })).sort((a, b) => (rank(a.m) - rank(b.m)) || (a.i - b.i)).map(x => x.m);
+      } else {
+        ids = (Array.isArray(json.models) ? json.models : [])
+          .filter(x => x && Array.isArray(x.supportedGenerationMethods) && x.supportedGenerationMethods.indexOf('generateContent') >= 0)
+          .map(x => String(x.name || '').replace(/^models\//, ''))
+          .filter(m => /^gemini/i.test(m) && /flash/i.test(m) && !/image|tts|live|audio|embedding|robotics|computer|exp|thinking/i.test(m));
+        const rank = (m) => /lite/i.test(m) ? 1 : 0;
+        ids = ids.map((m, i) => ({ m: m, i: i })).sort((a, b) => (rank(a.m) - rank(b.m)) || (a.i - b.i)).map(x => x.m);
+      }
+    }
+    return { ids: ids, status: res.status, msg: msg };
+  }
+
+  function aiResultFrom(r, claude) {
+    if (!claude) return r.json;
+    const blocks = (r.json && Array.isArray(r.json.content)) ? r.json.content : [];
+    const text = blocks.filter(x => x && x.type === 'text' && typeof x.text === 'string').map(x => x.text).join('');
+    return { candidates: [{ content: { parts: [{ text: text }] } }] };
+  }
+
   async function callAI(b64, note) {
     const claude = aiProvider() === 'claude';
     const who = claude ? 'Claude' : 'Google';
@@ -2093,7 +2140,7 @@
     let models = all.slice();
     const wrongKind = aiModel && (claude ? /^(models\/)?gemini/i.test(aiModel) : /^claude/i.test(aiModel));
     if (aiModel && !wrongKind) models = [aiModel];
-    else if (aiGoodModel && all.indexOf(aiGoodModel) >= 0) models = [aiGoodModel].concat(models.filter(m => m !== aiGoodModel));
+    else if (aiGoodModel && (claude ? /^claude/i.test(aiGoodModel) : /^gemini/i.test(aiGoodModel))) models = [aiGoodModel].concat(models.filter(m => m !== aiGoodModel));
     const prompt = aiPrompt(note);
     const send = (m) => {
       if (claude) {
@@ -2127,22 +2174,13 @@
         seen.tried++;
         if (r.ok) {
           aiGoodModel = m;
-          if (!claude) return r.json;
-          const blocks = (r.json && Array.isArray(r.json.content)) ? r.json.content : [];
-          const text = blocks.filter(x => x && x.type === 'text' && typeof x.text === 'string').map(x => x.text).join('');
-          return { candidates: [{ content: { parts: [{ text: text }] } }] };
+          return aiResultFrom(r, claude);
         }
-        const bad = r.status === 400 || r.status === 401 || r.status === 403;
-        if (bad && /credit balance|billing|purchase credits/i.test(r.msg)) {
-          throw friendly('Your Claude account has no credit left. Add a few dollars at platform.claude.com (Billing), then try again.');
-        }
-        if (bad && /api key|api_key|key not valid|x-api-key|unregistered|unauthenticated|authentication/i.test(r.msg)) {
-          throw friendly(who + ' did not accept your key. Check it in Settings (Photo AI).');
-        }
+        keyProblem(r.status, r.msg, who);
         if (r.net) seen.net++;
         else if (r.status >= 500 || r.status === 529) seen.busy++;
         else if (r.status === 429) seen.limit++;
-        else if (r.status === 404) seen.missing++;
+        else if (r.status === 404) { seen.missing++; if (!seen.m404) seen.m404 = r.msg; }
         else seen.other = r;
         // anything else (model missing, busy, free limit for that model...): try the next model
       }
@@ -2150,12 +2188,35 @@
       if (seen.net + seen.busy < seen.tried || round === 1) break;
       await new Promise(res => setTimeout(res, 2500));
     }
+    let listed = null;
+    if (seen.missing > 0 && seen.missing === seen.tried) {
+      // every built-in model name was rejected: ask the service which ones this key can use
+      listed = await listModels(claude);
+      keyProblem(listed.status, listed.msg, who);
+      const fresh = listed.ids.filter(m => models.indexOf(m) < 0).slice(0, 4);
+      for (const m of fresh) {
+        const r = await send(m);
+        if (r.ok) {
+          aiGoodModel = m;
+          return aiResultFrom(r, claude);
+        }
+        keyProblem(r.status, r.msg, who);
+        if (r.status === 429) seen.limit++;
+        else if (r.status !== 404) seen.other = r;
+      }
+    }
     if (seen.net === seen.tried) throw friendly('Could not reach the AI. Check your internet and try again.');
     if (seen.net + seen.busy > 0 && seen.limit === 0 && seen.missing === 0 && !seen.other) {
       throw friendly((claude ? 'Claude' : 'The free Google AI') + ' is busy right now. Wait a minute and try again.');
     }
     if (seen.limit > 0) throw friendly(claude ? 'Claude says you are sending too many requests. Wait a minute and try again.' : 'Free limit reached for now. Wait a minute and try again.');
-    if (seen.missing > 0 && !seen.other) throw friendly('No AI model was available for your key. Open Settings and type a model name.', true);
+    if (seen.missing > 0 && !seen.other) {
+      let more = '';
+      if (listed && listed.ids.length) more = ' It can use: ' + listed.ids.slice(0, 4).join(', ') + '.';
+      else if (listed && listed.status) more = ' (' + who + ' said: ' + String(listed.msg).slice(0, 100) + ')';
+      else if (seen.m404) more = ' (' + who + ' said: ' + String(seen.m404).slice(0, 100) + ')';
+      throw friendly('No AI model was available for your key.' + more + ' Open Settings and type a model name.', true);
+    }
     const o = seen.other;
     throw friendly('The AI had a problem: ' + (o ? o.msg : 'unknown').slice(0, 160), true);
   }
