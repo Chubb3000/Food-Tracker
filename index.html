@@ -25,7 +25,6 @@
     else if (mq.addListener) mq.addListener(applyTheme);
   } catch (e) {}
 </script>
-<script src="https://unpkg.com/html5-qrcode"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -82,6 +81,7 @@
   #servBtns button { padding: 6px 10px; font-size: 0.9em; }
   #status, #scanStatus { color: var(--muted); margin-bottom: 8px; }
   #reader { width: 100%; margin-bottom: 8px; }
+  #reader video { display: block; width: 100%; max-height: 60vh; object-fit: cover; border-radius: 10px; background: #000; }
   .okmsg { background: var(--okbg); border: 1px solid #2e7d32; color: var(--oktext); padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; display: none; }
   .fine { color: var(--faint); font-size: 0.8em; margin: 6px 0 12px; }
 
@@ -339,14 +339,13 @@
 
     <div id="paneScan" style="display:none">
       <h3>Scan a barcode</h3>
-    <div class="fine" style="margin-top:0">Hold a barcode in front of the camera. It scans by itself.</div>
+    <div class="fine" style="margin-top:0">Hold a barcode in front of the camera. It scans by itself, at any angle or upside down.</div>
     <div id="reader"></div>
     <div id="scanStatus"></div>
-    <button type="button" class="gray" id="camRetry" style="display:none;margin-bottom:12px">Try the camera again</button>
-    <div class="fine">Camera not working? Type the number under the barcode:</div>
+    <button type="button" class="gray" id="camRetry" style="display:none;margin-bottom:12px">Try again</button>
+    <div class="fine">Camera not working? Type the number under the barcode. It looks it up by itself.</div>
     <div class="row">
-      <input id="code" placeholder="Barcode number" inputmode="numeric">
-      <button id="lookupBtn">Look up</button>
+      <input id="code" placeholder="Barcode number" inputmode="numeric" autocomplete="off">
     </div>
 
     </div>
@@ -795,7 +794,7 @@
   let unsubMonth = null, unsubW = null;
   let goals = Object.assign({}, DEFAULT_GOALS);
   let picked = null;
-  let scanner = null;
+  let scanRun = null;        // the running camera scan: { stream, video, canvas }
   let currentMeal = 'breakfast';
   let auth = null, db = null, uid = null, unsubDay = null, unsubGoals = null;
   let authMode = 'login';
@@ -2817,9 +2816,8 @@
   // code, a card shows the product name with Add and Try again.
   let lastScan = null;      // { code, it } for the card on screen (it is null when nothing was found)
   let scanBusy = false;     // true during a lookup and while the card is open, so more reads are ignored
-  let scanSeq = 0, lookSeq = 0;
+  let scanSeq = 0, lookSeq = 0, scanStarting = 0;
   let coolCode = '', coolUntil = 0;
-  let scanStopP = Promise.resolve();
 
   // After Add or Try again, ignore the same barcode for a few seconds so it does not pop up again at once
   function cool(code) { coolCode = code; coolUntil = Date.now() + 3000; }
@@ -2864,7 +2862,7 @@
     $('scanStatus').textContent = 'Looking up ' + code + '...';
     let card;
     try {
-      const res = await fetch('https://world.openfoodfacts.org/api/v2/product/' + encodeURIComponent(code) + '?fields=product_name,brands,nutriments,serving_size,serving_quantity');
+      const res = await fetch('https://world.openfoodfacts.org/api/v2/product/' + encodeURIComponent(code.length === 12 ? '0' + code : code) + '?fields=product_name,brands,nutriments,serving_size,serving_quantity');
       const json = await res.json();
       if (json.status !== 1 || !json.product) {
         card = ['Not found', code, 'This barcode is not in the food database. Tap Try again, or go back and search by name or add by hand.', null];
@@ -2886,53 +2884,205 @@
     showScanCard(card[0], card[1], card[2], card[3], code);
   }
 
+  // ---- The barcode reader: ZXing (WebAssembly), loaded from a CDN the first time the scan page opens.
+  // It reads barcodes at any angle and upside down. The app turns each camera picture a bit
+  // (0, +30 and -30 degrees) and the reader itself also tries 90 degree turns, so every angle is covered.
+  const ZX_VER = '3.1.8';
+  const ZX_HOSTS = [
+    'https://cdn.jsdelivr.net/npm/zxing-wasm@' + ZX_VER + '/dist/',
+    'https://unpkg.com/zxing-wasm@' + ZX_VER + '/dist/'
+  ];
+  const SCAN_FORMATS = ['EAN-13', 'EAN-8', 'UPC-A', 'UPC-E'];
+  const SCAN_TURNS = [0, 30, -30];
+  const SCAN_BINARIZERS = ['LocalAverage', 'FixedThreshold'];   // normal light, then a plain black/white cut
+  let readerP = null;
+
+  function loadScript(url) {
+    return new Promise((resolve, reject) => {
+      const el = document.createElement('script');
+      el.src = url;
+      el.async = true;
+      el.onload = () => resolve();
+      el.onerror = () => { el.remove(); reject(new Error('script')); };
+      document.head.appendChild(el);
+    });
+  }
+
+  function loadReader() {
+    if (readerP) return readerP;
+    readerP = (async () => {
+      let lastErr = null;
+      for (const host of ZX_HOSTS) {
+        try {
+          if (!window.ZXingWASM) await loadScript(host + 'iife/reader/index.js');
+          await window.ZXingWASM.prepareZXingModule({
+            overrides: { locateFile: (path, prefix) => (/\.wasm$/.test(path) ? host + 'reader/' + path : prefix + path) },
+            fireImmediately: true
+          });
+          return window.ZXingWASM;
+        } catch (e) {
+          lastErr = e;
+          window.ZXingWASM = undefined;   // try the next host from scratch
+        }
+      }
+      throw lastErr || new Error('reader');
+    })();
+    readerP.catch(() => { readerP = null; });   // so "Try again" loads it again
+    return readerP;
+  }
+
+  // A short UPC-E code (8 digits) is the same product as a 12 digit UPC-A code, which is what the food database uses
+  function upceToUpca(e) {
+    if (!/^\d{8}$/.test(e)) return e;
+    const ns = e[0], d = e.slice(1, 7), chk = e[7];
+    const last = d[5];
+    let body;
+    if (last === '0' || last === '1' || last === '2') body = d.slice(0, 2) + last + '0000' + d.slice(2, 5);
+    else if (last === '3') body = d.slice(0, 3) + '00000' + d.slice(3, 5);
+    else if (last === '4') body = d.slice(0, 4) + '00000' + d[4];
+    else body = d.slice(0, 5) + '0000' + last;
+    return ns + body + chk;
+  }
+
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+  // Looks at the current camera picture. Returns a barcode number, or '' if there was none.
+  async function readFrame(run, Z) {
+    const v = run.video;
+    let w = v.videoWidth, h = v.videoHeight;
+    if (!w || !h || v.readyState < 2) return '';
+    if (w > 1280) { h = Math.round(h * 1280 / w); w = 1280; }
+    if (!run.canvas) run.canvas = document.createElement('canvas');
+    const c = run.canvas;
+    if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+    const g = c.getContext('2d', { willReadFrequently: true });
+    for (const turn of SCAN_TURNS) {
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.fillStyle = '#808080';
+      g.fillRect(0, 0, w, h);
+      if (turn) {
+        g.translate(w / 2, h / 2);
+        g.rotate(turn * Math.PI / 180);
+        g.drawImage(v, -w / 2, -h / 2, w, h);
+      } else {
+        g.drawImage(v, 0, 0, w, h);
+      }
+      const img = g.getImageData(0, 0, w, h);
+      for (const binarizer of SCAN_BINARIZERS) {
+        const res = await Z.readBarcodes(img, { formats: SCAN_FORMATS, tryHarder: true, tryRotate: true, maxNumberOfSymbols: 1, binarizer: binarizer });
+        if (run !== scanRun) return '';
+        if (res && res.length && res[0].text && res[0].isValid !== false) {
+          let text = String(res[0].text).replace(/\D/g, '');
+          if (/^UPC-?E$/i.test(String(res[0].format || '')) && text.length === 8) text = upceToUpca(text);
+          if (text) return text;
+        }
+      }
+      await sleep(0);   // let the screen update between turns
+    }
+    return '';
+  }
+
+  // Called with every barcode number the camera (or the typed box) finds
+  function onBarcode(code) {
+    if (scanBusy) return;
+    if (code === coolCode && Date.now() < coolUntil) return;
+    try { if (navigator.vibrate) navigator.vibrate(60); } catch (e) {}
+    $('code').value = code;
+    lookupBarcode(code);
+  }
+
+  async function scanLoop(run, Z) {
+    let errors = 0;
+    while (scanRun === run) {
+      await sleep(90);
+      if (scanRun !== run) return;
+      if (scanBusy || document.hidden) continue;
+      let code = '';
+      try {
+        code = await readFrame(run, Z);
+        errors = 0;
+      } catch (e) {
+        errors++;
+        if (errors >= 3) {
+          stopScan();
+          $('scanStatus').textContent = 'The barcode reader stopped working. Tap Try again, or type the barcode number below.';
+          $('camRetry').style.display = 'inline-block';
+          return;
+        }
+      }
+      if (code && scanRun === run && !scanBusy) onBarcode(code);
+    }
+  }
+
   function stopScan() {
     scanSeq++;
-    const sc = scanner;
-    scanner = null;
-    if (!sc) return scanStopP;
-    scanStopP = scanStopP.then(async () => {
-      try { await sc.stop(); } catch (e) {}
-      try { sc.clear(); } catch (e) {}
-    });
-    return scanStopP;
+    scanStarting = 0;
+    const run = scanRun;
+    scanRun = null;
+    if (run) {
+      try { run.stream.getTracks().forEach(t => t.stop()); } catch (e) {}
+      try { run.video.pause(); run.video.srcObject = null; run.video.remove(); } catch (e) {}
+    }
+    return Promise.resolve();
   }
 
   async function startScan() {
-    if (scanner) return;   // already looking
+    if (scanRun || scanStarting) return;
     const my = ++scanSeq;
+    scanStarting = my;
     const status = $('scanStatus');
     $('camRetry').style.display = 'none';
     status.textContent = 'Starting camera...';
-    await scanStopP;
-    if (my !== scanSeq) return;
-    let sc = null;
+    const readerReady = loadReader();   // starts loading while the phone asks about the camera
+    readerReady.catch(() => {});
+    let stream = null;
     try {
-      sc = new Html5Qrcode('reader');
-      scanner = sc;
-      await sc.start(
-        { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 250, height: 150 } },
-        (decodedText) => {
-          if (scanBusy) return;
-          if (decodedText === coolCode && Date.now() < coolUntil) return;
-          try { if (navigator.vibrate) navigator.vibrate(60); } catch (e) {}
-          $('code').value = decodedText;
-          lookupBarcode(decodedText);
-        }
-      );
-      if (my !== scanSeq) {   // the person left this page while the camera was starting
-        try { await sc.stop(); } catch (e) {}
-        try { sc.clear(); } catch (e) {}
-        return;
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('no camera api');
+      stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } });
+    } catch (e) {
+      if (scanSeq === my) {
+        scanStarting = 0;
+        status.textContent = 'Could not start the camera. Allow camera access, or type the barcode number below.';
+        $('camRetry').style.display = 'inline-block';
       }
-      if (!scanBusy) status.textContent = 'Point the camera at a barcode.';
-    } catch (err) {
-      if (my !== scanSeq) return;
-      if (scanner === sc) scanner = null;
-      status.textContent = 'Could not start the camera. Allow camera access, or type the barcode number below.';
-      $('camRetry').style.display = 'inline-block';
+      return;
     }
+    if (scanSeq !== my) {   // the person left this page while the phone was asking
+      try { stream.getTracks().forEach(t => t.stop()); } catch (e) {}
+      return;
+    }
+    const video = document.createElement('video');
+    video.setAttribute('playsinline', '');
+    video.setAttribute('webkit-playsinline', '');
+    video.muted = true;
+    video.autoplay = true;
+    video.srcObject = stream;
+    $('reader').innerHTML = '';
+    $('reader').appendChild(video);
+    const run = { stream: stream, video: video, canvas: null };
+    scanRun = run;
+    scanStarting = 0;
+    try { await video.play(); } catch (e) {}
+    try {   // keep the picture sharp on phones that can focus all the time
+      const track = stream.getVideoTracks()[0];
+      const caps = track && track.getCapabilities ? track.getCapabilities() : null;
+      if (caps && caps.focusMode && caps.focusMode.indexOf('continuous') !== -1) await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+    } catch (e) {}
+    if (scanRun !== run) return;
+    if (!scanBusy) status.textContent = 'Getting the scanner ready...';
+    let Z;
+    try {
+      Z = await readerReady;
+    } catch (e) {
+      if (scanRun !== run) return;
+      stopScan();
+      status.textContent = 'Could not load the barcode reader. Check your internet, then tap Try again. Or type the barcode number below.';
+      $('camRetry').style.display = 'inline-block';
+      return;
+    }
+    if (scanRun !== run) return;
+    if (!scanBusy) status.textContent = 'Point the camera at a barcode.';
+    scanLoop(run, Z);
   }
 
   // Coming back to the app from another app can leave the camera frozen, so restart it
@@ -3067,12 +3217,18 @@
     $('scanStatus').textContent = 'Point the camera at a barcode.';
   };
   $('camRetry').onclick = startScan;
-  const typedLookup = () => {
-    const c = $('code').value.trim();
-    if (c && !scanBusy) lookupBarcode(c);
-  };
-  $('lookupBtn').onclick = typedLookup;
-  $('code').addEventListener('keydown', (e) => { if (e.key === 'Enter') typedLookup(); });
+  // Typed number: looks it up by itself. 13 and 14 digits are complete right away; 12 (US) and 8 digit
+  // codes wait a moment in case the person is still typing the last digit.
+  let codeTimer = null;
+  $('code').addEventListener('input', () => {
+    clearTimeout(codeTimer);
+    const digits = $('code').value.replace(/\D/g, '');
+    if ($('code').value !== digits) $('code').value = digits;
+    if (scanBusy) return;
+    const go = () => { if ($('code').value === digits && !scanBusy && curPane === 'scan') lookupBarcode(digits); };
+    if (digits.length === 13 || digits.length === 14) go();
+    else if (digits.length === 12 || digits.length === 8) codeTimer = setTimeout(go, 1200);
+  });
   $('grams').addEventListener('input', updatePickCals);
   $('searchBtn').onclick = search;
   $('query').addEventListener('keydown', (e) => { if (e.key === 'Enter') search(); });
