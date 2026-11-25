@@ -1,15 +1,15 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Food Tracker</title>
-<meta name="theme-color" content="#f4f6f8">
+<meta name="theme-color" content="#121614">
 <script>
   // Dark mode: runs before the page paints so there is no white flash.
   function themeChoice() {
-    try { var t = localStorage.getItem('theme'); if (t === 'dark' || t === 'auto') return t; } catch (e) {}
-    return 'light';
+    try { var t = localStorage.getItem('theme'); if (t === 'light' || t === 'auto') return t; } catch (e) {}
+    return 'dark';   // dark unless the person chose something else in Settings
   }
   function applyTheme() {
     var t = themeChoice();
@@ -80,7 +80,10 @@
   #servBtns { margin-top: 8px; margin-bottom: 4px; }
   #servBtns button { padding: 6px 10px; font-size: 0.9em; }
   #status, #scanStatus { color: var(--muted); margin-bottom: 8px; }
-  #reader { width: 100%; margin-bottom: 8px; }
+  #reader { position: relative; overflow: hidden; border-radius: 10px; width: 100%; margin-bottom: 8px; }
+  /* the aiming box (barcode shaped): the camera reads the whole picture, the box just shows where to hold the barcode */
+  #reader .scanBox { position: absolute; left: 50%; top: 46%; width: 80%; aspect-ratio: 2.2 / 1; transform: translate(-50%, -50%); border: 3px solid #fff; border-radius: 10px; box-shadow: 0 0 0 999px rgba(0,0,0,0.4); pointer-events: none; }
+  #reader .scanBox span { position: absolute; left: 0; right: 0; top: 100%; margin-top: 8px; text-align: center; color: #fff; font-size: 0.85em; text-shadow: 0 1px 3px #000; }
   #reader video { display: block; width: 100%; max-height: 60vh; object-fit: cover; border-radius: 10px; background: #000; }
   .okmsg { background: var(--okbg); border: 1px solid #2e7d32; color: var(--oktext); padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; display: none; }
   .fine { color: var(--faint); font-size: 0.8em; margin: 6px 0 12px; }
@@ -407,7 +410,7 @@
     <button class="gray" id="settingsBackBtn" style="margin-bottom:8px">&larr; Back to home</button>
     <h2>Appearance</h2>
     <div class="field"><label for="themeSel">Theme</label>
-      <select id="themeSel"><option value="light">Light</option><option value="dark">Dark</option><option value="auto">Match my phone</option></select>
+      <select id="themeSel"><option value="dark">Dark</option><option value="light">Light</option><option value="auto">Match my phone</option></select>
       <div class="fine" style="margin:-6px 0 0">Changes right away. Saved on this device.</div></div>
     <h2 style="margin-top:28px">Daily goals</h2>
     <div class="field"><label for="gCal">Calories</label><input id="gCal" type="number" inputmode="numeric" min="0"></div>
@@ -3022,6 +3025,7 @@
     if (run) {
       try { run.stream.getTracks().forEach(t => t.stop()); } catch (e) {}
       try { run.video.pause(); run.video.srcObject = null; run.video.remove(); } catch (e) {}
+      try { if (run.box) run.box.remove(); } catch (e) {}
     }
     return Promise.resolve();
   }
@@ -3059,7 +3063,11 @@
     video.srcObject = stream;
     $('reader').innerHTML = '';
     $('reader').appendChild(video);
-    const run = { stream: stream, video: video, canvas: null };
+    const box = document.createElement('div');
+    box.className = 'scanBox';
+    box.innerHTML = '<span>Put the barcode in this box</span>';
+    $('reader').appendChild(box);
+    const run = { stream: stream, video: video, canvas: null, box: box };
     scanRun = run;
     scanStarting = 0;
     try { await video.play(); } catch (e) {}
