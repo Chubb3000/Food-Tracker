@@ -120,6 +120,13 @@
   .seg { flex-wrap: wrap; }
   .seg button { flex: 1; background: #607d8b; }
   .seg button.on { background: #1565c0; }
+  #setupView.asPop { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 60; background: rgba(0,0,0,0.55); align-items: flex-start; justify-content: center; padding: 16px; overflow-y: auto; }
+  #setupView.asPop #setupBox { background: var(--card); color: var(--text); border-radius: 14px; padding: 18px; width: 100%; max-width: 440px; box-shadow: 0 8px 30px var(--shadow); margin: auto 0; }
+  #setupChoices button { display: block; width: 100%; text-align: left; margin-bottom: 10px; padding: 14px 16px; background: var(--card2); color: var(--text); border: 2px solid var(--border); border-radius: 12px; }
+  #setupChoices button strong { display: block; font-size: 1.2em; margin-bottom: 2px; }
+  #setupChoices button span { color: var(--muted2); font-size: 0.9em; }
+  #setupChoices button.on { border-color: #1565c0; }
+  #setupGoalLine { margin-bottom: 12px; font-size: 1.1em; }
   #setupResult { background: var(--okbg); color: var(--oktext); border-radius: 12px; padding: 12px; margin: 4px 0 12px; line-height: 1.5; }
   #setupResult .fine { color: var(--oktext); opacity: 0.85; margin: 6px 0 0; }
   #goalHint { color: var(--muted2); font-size: 0.9em; margin-bottom: 12px; }
@@ -459,45 +466,53 @@
     <button class="gray" id="logoutBtn">Log out</button>
   </div>
 
-<!-- PLAN SETUP -->
+<!-- PLAN SETUP: step 1 = pick a goal, step 2 = height, weight and the rest -->
   <div id="setupView" style="display:none">
-    <h2 id="setupTitle">Set up your plan</h2>
-    <div class="fine" id="setupIntro">Tell me your goal and a few body stats and I will work out your daily calories and macros. You can change them any time in Settings.</div>
-    <div class="field"><label>My goal</label>
-      <div class="row seg" id="setupGoal">
-        <button type="button" data-v="cut">Cutting</button>
-        <button type="button" data-v="recomp">Recomp</button>
-        <button type="button" data-v="bulk">Bulking</button>
+   <div id="setupBox">
+    <div id="setupPick">
+      <h2 id="setupTitle">What is your goal?</h2>
+      <div class="fine" id="setupIntro">Pick one. Then I will ask for your height and weight and set your daily calories and macros for you.</div>
+      <div id="setupChoices">
+        <button type="button" data-v="bulk"><strong>Bulking</strong><span>Eat a little more than you burn to build muscle.</span></button>
+        <button type="button" data-v="recomp"><strong>Maintaining</strong><span>Eat about what you burn to stay the same weight.</span></button>
+        <button type="button" data-v="cut"><strong>Cutting</strong><span>Eat a little less than you burn to lose fat.</span></button>
       </div>
-      <div class="fine" id="setupGoalNote" style="margin-top:6px"></div>
+      <div class="row" style="margin-bottom:0"><button type="button" class="gray" id="setupSkip">Skip for now</button></div>
     </div>
-    <div class="field" id="setupRateWrap"><label id="setupRateLabel">How much per week?</label>
-      <div class="row seg" id="setupRate"></div>
-    </div>
-    <div class="field"><label>Units</label>
-      <div class="row seg" id="setupUnit">
-        <button type="button" data-v="lb">Pounds, feet</button>
-        <button type="button" data-v="kg">Kilograms, cm</button>
+    <div id="setupForm" style="display:none">
+      <h2>Your details</h2>
+      <div id="setupGoalLine">Goal: <strong id="setupGoalName"></strong></div>
+      <div class="fine" id="setupGoalNote" style="margin-top:-6px"></div>
+      <div class="field" id="setupRateWrap"><label id="setupRateLabel">How much per week?</label>
+        <div class="row seg" id="setupRate"></div>
+        <div class="row" style="margin-top:8px"><input id="setupRateCustom" type="number" step="any" min="0" inputmode="decimal" placeholder="Or type your own" aria-label="Your own amount per week"><span class="fine" id="setupRateUnit" style="margin:0;align-self:center;white-space:nowrap">lb per week</span></div>
       </div>
-    </div>
-    <div class="field"><label for="setupW" id="setupWLabel">Weight (lb)</label><input id="setupW" type="number" step="any" inputmode="decimal"></div>
-    <div class="field" id="setupHftWrap"><label>Height</label>
-      <div class="row"><input id="setupFt" type="number" inputmode="numeric" min="0" placeholder="feet" aria-label="Height, feet"><input id="setupIn" type="number" inputmode="decimal" min="0" placeholder="inches" aria-label="Height, inches"></div>
-    </div>
-    <div class="field" id="setupHcmWrap" style="display:none"><label for="setupCm">Height (cm)</label><input id="setupCm" type="number" step="any" inputmode="decimal"></div>
-    <div class="field"><label for="setupAge">Age</label><input id="setupAge" type="number" inputmode="numeric" min="0"></div>
-    <div class="field"><label>Sex (used for the calorie math)</label>
-      <div class="row seg" id="setupSex">
-        <button type="button" data-v="m">Male</button>
-        <button type="button" data-v="f">Female</button>
+      <div class="field"><label>Units</label>
+        <div class="row seg" id="setupUnit">
+          <button type="button" data-v="lb">Pounds, feet</button>
+          <button type="button" data-v="kg">Kilograms, cm</button>
+        </div>
       </div>
+      <div class="field"><label for="setupW" id="setupWLabel">Weight (lb)</label><input id="setupW" type="number" step="any" inputmode="decimal"></div>
+      <div class="field" id="setupHftWrap"><label>Height</label>
+        <div class="row"><input id="setupFt" type="number" inputmode="numeric" min="0" placeholder="feet" aria-label="Height, feet"><input id="setupIn" type="number" inputmode="decimal" min="0" placeholder="inches" aria-label="Height, inches"></div>
+      </div>
+      <div class="field" id="setupHcmWrap" style="display:none"><label for="setupCm">Height (cm)</label><input id="setupCm" type="number" step="any" inputmode="decimal"></div>
+      <div class="field"><label for="setupAge">Age</label><input id="setupAge" type="number" inputmode="numeric" min="0"></div>
+      <div class="field"><label>Sex (used for the calorie math)</label>
+        <div class="row seg" id="setupSex">
+          <button type="button" data-v="m">Male</button>
+          <button type="button" data-v="f">Female</button>
+        </div>
+      </div>
+      <div class="field"><label for="setupAct">Activity level</label>
+        <select id="setupAct"></select>
+      </div>
+      <div id="setupResult"></div>
+      <div class="err" id="setupErr"></div>
+      <div class="row" style="margin-bottom:0"><button type="button" id="setupSave">Save my plan</button><button type="button" class="gray" id="setupBack">Back</button></div>
     </div>
-    <div class="field"><label for="setupAct">Activity level</label>
-      <select id="setupAct"></select>
-    </div>
-    <div id="setupResult"></div>
-    <div class="err" id="setupErr"></div>
-    <div class="row"><button type="button" id="setupSave">Save my plan</button><button type="button" class="gray" id="setupSkip">Skip for now</button></div>
+   </div>
   </div>
 
 <div id="scanPop" class="pop" style="display:none">
@@ -876,7 +891,7 @@
   let unsubMonth = null, unsubW = null;
   let goals = normGoals(DEFAULT_GOALS);
   let profile = null;        // what the person told the plan screen (goal, height, weight...)
-  let setupDone = false, setupAsked = false, setupMode = 'first';
+  let setupDone = false, setupAsked = false, setupMode = 'first', newAccount = false;
   let picked = null;
   let scanRun = null;        // the running camera scan: { stream, video, canvas }
   let currentMeal = 'breakfast';
@@ -1056,7 +1071,7 @@
       });
       list.sort((a, b) => (a.date < b.date ? -1 : (a.date > b.date ? 1 : 0)));
       weights = list;
-      if (curView === 'setup') setupPrefillWeight();
+      if (setupOpen()) setupPrefillWeight();
       if (curView === 'weight') drawWeight();
       if (curView === 'cal') drawCalendar();
     }, syncError);
@@ -1077,7 +1092,7 @@
       // First time on this account (new, or an older account): ask for the goal once. Wait for the
       // server's answer so a half-loaded copy on the phone does not ask by mistake.
       const fromCache = !!(snap.metadata && snap.metadata.fromCache);
-      if (!setupDone && !setupAsked && !fromCache) { setupAsked = true; openSetup('first'); }
+      if (!setupDone && !setupAsked && !fromCache) { setupAsked = true; openSetup('first', newAccount ? 'page' : 'pop'); }
     }, syncError);
     listenWeights();
     listenDay();
@@ -1106,6 +1121,8 @@
       return;
     }
     uid = user.uid;
+    // an account made in the last few minutes gets the plan page; older accounts get a one-time pop-up
+    newAccount = !!(user.metadata && user.metadata.creationTime && (Date.now() - Date.parse(user.metadata.creationTime)) < 10 * 60 * 1000);
     realToday = todayKey();
     viewKey = realToday;
     data[viewKey] = [];
@@ -3227,13 +3244,14 @@
     kg: { cut: [0.25, 0.5, 0.75, 1], bulk: [0.1, 0.25, 0.35, 0.5] }
   };
   const RATE_DEFAULT = { lb: { cut: 1, bulk: 0.5 }, kg: { cut: 0.5, bulk: 0.25 } };
-  const GOAL_NAME = { cut: 'Cutting', recomp: 'Recomp', bulk: 'Bulking' };
+  const GOAL_NAME = { cut: 'Cutting', recomp: 'Maintaining', bulk: 'Bulking' };
   const GOAL_NOTES = {
     cut: 'Eat a little less than you burn to lose fat. Protein stays high to protect your muscle.',
-    recomp: 'Eat about what you burn, with lots of protein, to slowly build muscle while losing fat.',
+    recomp: 'Eat about what you burn to stay the same weight. Plenty of protein helps you slowly build muscle.',
     bulk: 'Eat a little more than you burn to build muscle.'
   };
-  let setupSt = { goal: '', rate: 0, unit: 'lb', sex: '' };
+  let setupSt = { goal: '', rate: 0, unit: 'lb', sex: '', step: 'pick' };
+  let setupLook = 'page';   // 'page' = a full page (new accounts), 'pop' = a one-time pop-up on top of the log (older accounts)
 
   // p = { goal, rateKg, weightKg, heightCm, age, sex, act }  ->  calorie and macro ranges
   function planFor(p) {
@@ -3281,7 +3299,12 @@
     const age = Number($('setupAge').value);
     const cm = setupHeightCm();
     const weightKg = setupSt.unit === 'lb' ? w / LB : w;
-    if (!setupSt.goal) return { err: 'Pick Cutting, Recomp or Bulking.' };
+    if (!setupSt.goal) return { err: 'Pick Bulking, Maintaining or Cutting.' };
+    if (setupSt.goal !== 'recomp') {
+      const top = setupSt.goal === 'cut' ? (setupSt.unit === 'lb' ? 3 : 1.5) : (setupSt.unit === 'lb' ? 2 : 1);
+      if (!(setupSt.rate > 0)) return { err: 'Pick how much per week, or type your own.' };
+      if (setupSt.rate > top) return { err: 'That is too fast to be safe. Use ' + top + ' ' + setupSt.unit + ' a week or less.', hard: true };
+    }
     if (!(weightKg >= 25 && weightKg <= 350)) return { err: 'Type your weight in ' + (setupSt.unit === 'lb' ? 'pounds.' : 'kilograms.') };
     if (!(cm >= 120 && cm <= 250)) return { err: setupSt.unit === 'lb' ? 'Type your height in feet and inches.' : 'Type your height in cm.' };
     if (!(age >= 13 && age <= 100)) return { err: 'Type your age (13 to 100).' };
@@ -3292,7 +3315,12 @@
 
   function drawSetup() {
     const u = setupSt.unit;
-    Array.prototype.forEach.call($('setupGoal').children, b => b.classList.toggle('on', b.getAttribute('data-v') === setupSt.goal));
+    const picking = setupSt.step === 'pick';
+    $('setupPick').style.display = picking ? 'block' : 'none';
+    $('setupForm').style.display = picking ? 'none' : 'block';
+    Array.prototype.forEach.call($('setupChoices').children, b => b.classList.toggle('on', b.getAttribute('data-v') === setupSt.goal));
+    $('setupGoalName').textContent = GOAL_NAME[setupSt.goal] || '';
+    if (picking) return;
     Array.prototype.forEach.call($('setupUnit').children, b => b.classList.toggle('on', b.getAttribute('data-v') === u));
     Array.prototype.forEach.call($('setupSex').children, b => b.classList.toggle('on', b.getAttribute('data-v') === setupSt.sex));
     $('setupGoalNote').textContent = GOAL_NOTES[setupSt.goal] || '';
@@ -3305,13 +3333,14 @@
     if (showRate) {
       $('setupRateLabel').textContent = (setupSt.goal === 'cut' ? 'How much do you want to lose per week?' : 'How much do you want to gain per week?');
       const box = $('setupRate');
+      $('setupRateUnit').textContent = u + ' per week';
       box.innerHTML = '';
       RATES[u][setupSt.goal].forEach(v => {
         const b = document.createElement('button');
         b.type = 'button';
         b.textContent = v + ' ' + u;
-        b.classList.toggle('on', v === setupSt.rate);
-        b.onclick = () => { setupSt.rate = v; drawSetup(); };
+        b.classList.toggle('on', Math.abs(v - setupSt.rate) < 0.0001);
+        b.onclick = () => { setupSt.rate = v; $('setupRateCustom').value = ''; drawSetup(); };
         box.appendChild(b);
       });
     }
@@ -3319,7 +3348,7 @@
     const r = readSetup();
     const res = $('setupResult');
     if (!r.p) {
-      res.textContent = 'Fill in everything above to see your daily calories and macros.';
+      res.textContent = r.hard ? r.err : 'Fill in everything above to see your daily calories and macros.';
       return;
     }
     const pl = planFor(r.p);
@@ -3329,9 +3358,10 @@
       'Carbs: <strong>' + rangeText(pl.cMin, pl.cMax) + ' g</strong><br>' +
       'Fat: <strong>' + rangeText(pl.fMin, pl.fMax) + ' g</strong>';
     let note = 'You burn about ' + pl.maint + ' calories a day. ';
-    if (r.p.goal === 'cut') note += 'Cutting: about ' + setupSt.rate + ' ' + u + ' lost per week.';
-    else if (r.p.goal === 'bulk') note += 'Bulking: about ' + setupSt.rate + ' ' + u + ' gained per week.';
-    else note += 'Recomp: staying about the same weight.';
+    const rt = Math.round(setupSt.rate * 100) / 100;
+    if (r.p.goal === 'cut') note += 'Cutting: about ' + rt + ' ' + u + ' lost per week.';
+    else if (r.p.goal === 'bulk') note += 'Bulking: about ' + rt + ' ' + u + ' gained per week.';
+    else note += 'Maintaining: staying about the same weight.';
     if (pl.floored) note += ' Calories were raised to a safe minimum, so you may lose slower than you picked.';
     res.innerHTML = html + '<div class="fine">' + note + '</div>';
   }
@@ -3339,7 +3369,7 @@
   function latestWeightKg() { return weights.length ? weights[weights.length - 1].kg : null; }
 
   function setupPrefillWeight() {
-    if (!$('setupW').value && latestWeightKg()) {
+    if (setupOpen() && !$('setupW').value && latestWeightKg()) {
       $('setupW').value = r1(setupSt.unit === 'lb' ? latestWeightKg() * LB : latestWeightKg());
       drawSetup();
     }
@@ -3353,26 +3383,58 @@
     return best;
   }
 
+  function setupOpen() { return $('setupView').style.display !== 'none'; }
+
   // mode 'first' = the one-time screen after logging in, 'settings' = opened from Settings
-  function openSetup(mode) {
+  // look 'page' = a full page, 'pop' = a pop-up on top of the log
+  function openSetup(mode, look) {
     setupMode = mode;
+    setupLook = look || 'page';
     const pr = profile || {};
     setupSt.unit = unit;
     setupSt.goal = (pr.goal === 'cut' || pr.goal === 'bulk' || pr.goal === 'recomp') ? pr.goal : '';
     setupSt.sex = (pr.sex === 'm' || pr.sex === 'f') ? pr.sex : '';
-    setupSt.rate = (setupSt.goal === 'cut' || setupSt.goal === 'bulk')
-      ? nearestRate(setupSt.goal, unit, Number(pr.rateKg) || 0)
-      : RATE_DEFAULT[unit].cut;
+    setupSt.rate = RATE_DEFAULT[unit].cut;
+    $('setupRateCustom').value = '';
+    if ((setupSt.goal === 'cut' || setupSt.goal === 'bulk') && Number(pr.rateKg) > 0) {
+      const inUnit = Math.round((unit === 'lb' ? Number(pr.rateKg) * LB : Number(pr.rateKg)) * 100) / 100;
+      const near = nearestRate(setupSt.goal, unit, Number(pr.rateKg));
+      if (Math.abs(near - inUnit) < 0.011) setupSt.rate = near;       // one of the buttons
+      else { setupSt.rate = inUnit; $('setupRateCustom').value = String(inUnit); }   // their own number
+    } else if (setupSt.goal === 'cut' || setupSt.goal === 'bulk') setupSt.rate = RATE_DEFAULT[unit][setupSt.goal];
+    setupSt.step = (mode === 'settings' && setupSt.goal) ? 'form' : 'pick';
     $('setupAct').value = ACTIVITY.some(a => a[0] === pr.act) ? pr.act : 'light';
     $('setupAge').value = pr.age || '';
     const wKg = Number(pr.weightKg) || latestWeightKg() || 0;
     $('setupW').value = wKg > 0 ? r1(unit === 'lb' ? wKg * LB : wKg) : '';
     setupSetHeight(Number(pr.heightCm) || 0);
     $('setupErr').textContent = '';
-    $('setupTitle').textContent = (mode === 'first') ? 'Set up your plan' : 'Your calories and macros';
     $('setupSkip').textContent = (mode === 'first') ? 'Skip for now' : 'Cancel';
     drawSetup();
-    showView('setup');
+    const v = $('setupView');
+    if (setupLook === 'pop') {
+      v.classList.add('asPop');
+      v.style.display = 'flex';
+      window.scrollTo(0, 0);
+    } else {
+      v.classList.remove('asPop');
+      showView('setup');
+    }
+  }
+
+  function closeSetup() {
+    const v = $('setupView');
+    v.classList.remove('asPop');
+    v.style.display = 'none';
+  }
+
+  function chooseGoal(g) {
+    if (g !== setupSt.goal && (g === 'cut' || g === 'bulk')) { setupSt.rate = RATE_DEFAULT[setupSt.unit][g]; $('setupRateCustom').value = ''; }
+    setupSt.goal = g;
+    setupSt.step = 'form';
+    $('setupErr').textContent = '';
+    drawSetup();
+    window.scrollTo(0, 0);
   }
 
   function setSetupUnit(newU) {
@@ -3390,6 +3452,7 @@
     setupSt.baseShown = $('setupW').value;
     setupSetHeight(cm);
     if (setupSt.goal === 'cut' || setupSt.goal === 'bulk') setupSt.rate = RATE_DEFAULT[newU][setupSt.goal];
+    $('setupRateCustom').value = '';
     drawSetup();
   }
 
@@ -3404,17 +3467,19 @@
     try {
       db.collection('users').doc(uid).set({ goals: goals, unit: unit, profile: profile, setupDone: true }, { merge: true }).catch(syncError);
     } catch (e) { syncError(e); }
+    closeSetup();
     goHome();
   }
 
   function skipSetup() {
-    if (setupMode !== 'first') { openSettings(); return; }
+    if (setupMode !== 'first') { closeSetup(); openSettings(); return; }
     // keep the goals they have (older accounts get them as ranges) and do not ask again
     goals = normGoals(goals);
     setupDone = true;
     try {
       db.collection('users').doc(uid).set({ goals: goals, setupDone: true }, { merge: true }).catch(syncError);
     } catch (e) { syncError(e); }
+    closeSetup();
     goHome();
   }
 
@@ -3423,7 +3488,7 @@
     if (!pr || !GOAL_NAME[pr.goal]) return 'You have not set up a plan yet.';
     let t = 'Your plan: ' + GOAL_NAME[pr.goal];
     if (pr.goal !== 'recomp' && Number(pr.rateKg) > 0) {
-      const v = nearestRate(pr.goal, unit, Number(pr.rateKg));
+      const v = Math.round((unit === 'lb' ? Number(pr.rateKg) * LB : Number(pr.rateKg)) * 100) / 100;
       t += ', about ' + v + ' ' + unit + ' per week';
     }
     return t + '.';
@@ -3439,15 +3504,14 @@
   $('planBtn').onclick = () => openSetup('settings');
   $('setupSave').onclick = saveSetup;
   $('setupSkip').onclick = skipSetup;
-  Array.prototype.forEach.call($('setupGoal').children, b => {
-    b.onclick = () => {
-      const g = b.getAttribute('data-v');
-      if (g !== setupSt.goal && (g === 'cut' || g === 'bulk')) setupSt.rate = RATE_DEFAULT[setupSt.unit][g];
-      setupSt.goal = g;
-      $('setupErr').textContent = '';
-      drawSetup();
-    };
+  Array.prototype.forEach.call($('setupChoices').children, b => { b.onclick = () => chooseGoal(b.getAttribute('data-v')); });
+  $('setupRateCustom').addEventListener('input', () => {
+    const v = Number($('setupRateCustom').value);
+    setupSt.rate = v > 0 ? v : 0;
+    $('setupErr').textContent = '';
+    drawSetup();
   });
+  $('setupBack').onclick = () => { setupSt.step = 'pick'; $('setupErr').textContent = ''; drawSetup(); window.scrollTo(0, 0); };
   Array.prototype.forEach.call($('setupUnit').children, b => { b.onclick = () => setSetupUnit(b.getAttribute('data-v')); });
   Array.prototype.forEach.call($('setupSex').children, b => { b.onclick = () => { setupSt.sex = b.getAttribute('data-v'); $('setupErr').textContent = ''; drawSetup(); }; });
   ACTIVITY.forEach(a => { const o = document.createElement('option'); o.value = a[0]; o.textContent = a[1]; $('setupAct').appendChild(o); });
