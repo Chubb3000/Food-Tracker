@@ -74,6 +74,10 @@
   li { background: var(--card); padding: 12px; border-radius: 8px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   li button.del { background: #c62828; padding: 6px 10px; }
   li span.tap { flex: 1; cursor: pointer; }
+  .mealtotals { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 8px; padding: 8px 6px; border: 1px solid var(--border); border-radius: 8px; text-align: center; }
+  .mealtotals span { display: block; font-size: 0.75em; color: var(--muted2); }
+  .mealtotals strong { display: block; font-size: 1em; }
+  .mealnote { color: var(--muted2); font-size: 0.8em; margin-top: 4px; }
   #editPop .popCard { max-height: 94vh; overflow-y: auto; }
   .cols { display: grid; gap: 8px; }
   .cols3 { grid-template-columns: repeat(3, 1fr); }
@@ -1620,6 +1624,33 @@
         empty.textContent = 'Nothing logged yet.';
         card.appendChild(empty);
       } else if (open) {
+        // totals for the whole meal, shown only while the meal is open
+        let mp = 0, mc = 0, mf = 0, noMacros = false;
+        entries.forEach(it => {
+          if (it.p == null) { noMacros = true; return; }
+          mp += it.p || 0;
+          mc += it.c || 0;
+          mf += it.f || 0;
+        });
+        const tot = document.createElement('div');
+        tot.className = 'mealtotals';
+        [['Calories', String(Math.round(sub))], ['Protein', round1(mp) + 'g'], ['Fat', round1(mf) + 'g'], ['Carbs', round1(mc) + 'g']].forEach(x => {
+          const cell = document.createElement('div');
+          const lab = document.createElement('span');
+          lab.textContent = x[0];
+          const val = document.createElement('strong');
+          val.textContent = x[1];
+          cell.appendChild(lab);
+          cell.appendChild(val);
+          tot.appendChild(cell);
+        });
+        card.appendChild(tot);
+        if (noMacros) {
+          const note = document.createElement('div');
+          note.className = 'mealnote';
+          note.textContent = 'Some foods here have no macros listed, so the protein, fat and carbs are a little low.';
+          card.appendChild(note);
+        }
         const ul = document.createElement('ul');
         entries.forEach(item => {
           const li = document.createElement('li');
