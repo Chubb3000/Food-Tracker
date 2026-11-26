@@ -99,6 +99,9 @@
   .bar-head { display: flex; justify-content: space-between; gap: 8px; font-size: 0.95em; margin-bottom: 5px; }
   .bar-head .right { color: var(--muted2); text-align: right; }
   .bar-track { background: var(--track); border-radius: 8px; height: 14px; overflow: hidden; position: relative; }
+  .bar-item.toggle { cursor: pointer; }
+  .bar-item.toggle .bar-head strong::before { content: "\25B8"; display: inline-block; width: 1.1em; color: var(--muted2); }
+  .bar-item.toggle[aria-expanded="true"] .bar-head strong::before { content: "\25BE"; }
   .bar-mark { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--text); opacity: 0.55; }
   .bar-fill { height: 100%; border-radius: 8px; }
   .bar-fill.over { background: #c62828; }
@@ -882,6 +885,7 @@
   let curView = 'load';
   let data = {};             // day key -> list of foods
   let openMeals = {};        // which meal cards are expanded (this visit only)
+  let carbsOpen = false;     // are sugar and fiber showing under Carbs (this visit only)
   let weights = [];          // [{date, kg}] oldest first
   let unit = 'lb';
   let aiKey = '', aiModel = '', showModelBox = false;
@@ -1348,7 +1352,8 @@
     }
     const style = 'width:' + width + '%' + (over ? '' : ';background:' + color);
     const mark = (isRange && lo > 0) ? '<div class="bar-mark" style="left:' + (lo / hi * 100) + '%"></div>' : '';
-    return '<div class="bar-item' + (opts.sub ? ' sub' : '') + '"><div class="bar-head"><span>' + left + '</span><span class="right">' + right + '</span></div>' +
+    const tog = opts.toggle ? ' id="carbsRow" role="button" tabindex="0" aria-expanded="' + (opts.open ? 'true' : 'false') + '" title="Tap to ' + (opts.open ? 'hide' : 'show') + ' sugar and fiber"' : '';
+    return '<div class="bar-item' + (opts.sub ? ' sub' : '') + (opts.toggle ? ' toggle' : '') + '"' + tog + '><div class="bar-head"><span>' + left + '</span><span class="right">' + right + '</span></div>' +
       '<div class="bar-track"><div class="bar-fill' + (over ? ' over' : '') + '" style="' + style + '"></div>' + mark + '</div></div>';
   }
 
@@ -1426,10 +1431,11 @@
       barHTML('Calories', total, { min: goals.calMin, max: goals.calMax }, 'cal', '#2e7d32') +
       barHTML('Protein', tp, { min: goals.pMin, max: goals.pMax }, 'g', '#1565c0') +
       barHTML('Fat', tf, { min: goals.fMin, max: goals.fMax }, 'g', '#8e24aa') +
-      barHTML('Carbs', tc, { min: goals.cMin, max: goals.cMax }, 'g', '#f9a825') +
-      barHTML('Sugar', ts, goals.s, 'g', '#ef6c00', { sub: true }) +
-      barHTML('Fiber', tfi, goals.fi, 'g', '#6d4c41', { sub: true, minimum: true });
-    $('barsNote').textContent = (missing && list.length > 0)
+      barHTML('Carbs', tc, { min: goals.cMin, max: goals.cMax }, 'g', '#f9a825', { toggle: true, open: carbsOpen }) +
+      (carbsOpen ?
+        barHTML('Sugar', ts, goals.s, 'g', '#ef6c00', { sub: true }) +
+        barHTML('Fiber', tfi, goals.fi, 'g', '#6d4c41', { sub: true, minimum: true }) : '');
+    $('barsNote').textContent = (carbsOpen && missing && list.length > 0)
       ? 'Sugar and fiber are part of carbs. Some foods do not list them, so those two totals can be low.' : '';
 
     const plans = (viewKey === todayKey()) ? mealPlan(list) : {};
@@ -3500,6 +3506,16 @@
   $('settingsBtn').onclick = openSettings;
   $('backBtn').onclick = goHome;
   $('settingsBackBtn').onclick = goHome;
+  // Tap Carbs to show or hide sugar and fiber
+  function toggleCarbs(keepFocus) {
+    carbsOpen = !carbsOpen;
+    render();
+    if (keepFocus && $('carbsRow')) $('carbsRow').focus();   // the bars are redrawn, so put the keyboard focus back
+  }
+  $('bars').addEventListener('click', (e) => { if (e.target.closest && e.target.closest('#carbsRow')) toggleCarbs(false); });
+  $('bars').addEventListener('keydown', (e) => {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.id === 'carbsRow') { e.preventDefault(); toggleCarbs(true); }
+  });
   $('saveGoals').onclick = saveGoals;
   $('planBtn').onclick = () => openSetup('settings');
   $('setupSave').onclick = saveSetup;
