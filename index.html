@@ -98,7 +98,8 @@
   .bar-item:last-child { margin-bottom: 0; }
   .bar-head { display: flex; justify-content: space-between; gap: 8px; font-size: 0.95em; margin-bottom: 5px; }
   .bar-head .right { color: var(--muted2); text-align: right; }
-  .bar-track { background: var(--track); border-radius: 8px; height: 14px; overflow: hidden; }
+  .bar-track { background: var(--track); border-radius: 8px; height: 14px; overflow: hidden; position: relative; }
+  .bar-mark { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--text); opacity: 0.55; }
   .bar-fill { height: 100%; border-radius: 8px; }
   .bar-fill.over { background: #c62828; }
 
@@ -115,6 +116,12 @@
   .field { margin-bottom: 12px; }
   .field label { display: block; margin-bottom: 4px; font-weight: 600; }
   .field input { width: 100%; }
+  .field .row { margin-bottom: 0; }
+  .seg { flex-wrap: wrap; }
+  .seg button { flex: 1; background: #607d8b; }
+  .seg button.on { background: #1565c0; }
+  #setupResult { background: var(--okbg); color: var(--oktext); border-radius: 12px; padding: 12px; margin: 4px 0 12px; line-height: 1.5; }
+  #setupResult .fine { color: var(--oktext); opacity: 0.85; margin: 6px 0 0; }
   #goalHint { color: var(--muted2); font-size: 0.9em; margin-bottom: 12px; }
 
   /* login */
@@ -413,10 +420,13 @@
       <select id="themeSel"><option value="dark">Dark</option><option value="light">Light</option><option value="auto">Match my phone</option></select>
       <div class="fine" style="margin:-6px 0 0">Changes right away. Saved on this device.</div></div>
     <h2 style="margin-top:28px">Daily goals</h2>
-    <div class="field"><label for="gCal">Calories</label><input id="gCal" type="number" inputmode="numeric" min="0"></div>
-    <div class="field"><label for="gP">Protein (grams)</label><input id="gP" type="number" inputmode="numeric" min="0"></div>
-    <div class="field"><label for="gC">Carbs (grams)</label><input id="gC" type="number" inputmode="numeric" min="0"></div>
-    <div class="field"><label for="gF">Fat (grams)</label><input id="gF" type="number" inputmode="numeric" min="0"></div>
+    <div class="fine" id="planSummary"></div>
+    <button type="button" class="gray" id="planBtn" style="margin-bottom:16px">Set up my calories and macros</button>
+    <div class="fine">Each goal is a range: the low number to the high number. You can type your own below.</div>
+    <div class="field"><label>Calories (range)</label><div class="row"><input id="gCalMin" type="number" inputmode="numeric" min="0" placeholder="From" aria-label="Calories, low"><input id="gCalMax" type="number" inputmode="numeric" min="0" placeholder="To" aria-label="Calories, high"></div></div>
+    <div class="field"><label>Protein (grams, range)</label><div class="row"><input id="gPMin" type="number" inputmode="numeric" min="0" placeholder="From" aria-label="Protein, low"><input id="gPMax" type="number" inputmode="numeric" min="0" placeholder="To" aria-label="Protein, high"></div></div>
+    <div class="field"><label>Carbs (grams, range)</label><div class="row"><input id="gCMin" type="number" inputmode="numeric" min="0" placeholder="From" aria-label="Carbs, low"><input id="gCMax" type="number" inputmode="numeric" min="0" placeholder="To" aria-label="Carbs, high"></div></div>
+    <div class="field"><label>Fat (grams, range)</label><div class="row"><input id="gFMin" type="number" inputmode="numeric" min="0" placeholder="From" aria-label="Fat, low"><input id="gFMax" type="number" inputmode="numeric" min="0" placeholder="To" aria-label="Fat, high"></div></div>
     <div class="field"><label for="gS">Sugar limit (grams, part of carbs)</label><input id="gS" type="number" inputmode="numeric" min="0"></div>
     <div class="field"><label for="gFi">Fiber goal (grams, part of carbs)</label><input id="gFi" type="number" inputmode="numeric" min="0"></div>
     <div class="field"><label for="unitSel">Weight units</label>
@@ -447,6 +457,47 @@
     <h2 style="margin-top:32px">Account</h2>
     <div class="fine" id="acctLine"></div>
     <button class="gray" id="logoutBtn">Log out</button>
+  </div>
+
+<!-- PLAN SETUP -->
+  <div id="setupView" style="display:none">
+    <h2 id="setupTitle">Set up your plan</h2>
+    <div class="fine" id="setupIntro">Tell me your goal and a few body stats and I will work out your daily calories and macros. You can change them any time in Settings.</div>
+    <div class="field"><label>My goal</label>
+      <div class="row seg" id="setupGoal">
+        <button type="button" data-v="cut">Cutting</button>
+        <button type="button" data-v="recomp">Recomp</button>
+        <button type="button" data-v="bulk">Bulking</button>
+      </div>
+      <div class="fine" id="setupGoalNote" style="margin-top:6px"></div>
+    </div>
+    <div class="field" id="setupRateWrap"><label id="setupRateLabel">How much per week?</label>
+      <div class="row seg" id="setupRate"></div>
+    </div>
+    <div class="field"><label>Units</label>
+      <div class="row seg" id="setupUnit">
+        <button type="button" data-v="lb">Pounds, feet</button>
+        <button type="button" data-v="kg">Kilograms, cm</button>
+      </div>
+    </div>
+    <div class="field"><label for="setupW" id="setupWLabel">Weight (lb)</label><input id="setupW" type="number" step="any" inputmode="decimal"></div>
+    <div class="field" id="setupHftWrap"><label>Height</label>
+      <div class="row"><input id="setupFt" type="number" inputmode="numeric" min="0" placeholder="feet" aria-label="Height, feet"><input id="setupIn" type="number" inputmode="decimal" min="0" placeholder="inches" aria-label="Height, inches"></div>
+    </div>
+    <div class="field" id="setupHcmWrap" style="display:none"><label for="setupCm">Height (cm)</label><input id="setupCm" type="number" step="any" inputmode="decimal"></div>
+    <div class="field"><label for="setupAge">Age</label><input id="setupAge" type="number" inputmode="numeric" min="0"></div>
+    <div class="field"><label>Sex (used for the calorie math)</label>
+      <div class="row seg" id="setupSex">
+        <button type="button" data-v="m">Male</button>
+        <button type="button" data-v="f">Female</button>
+      </div>
+    </div>
+    <div class="field"><label for="setupAct">Activity level</label>
+      <select id="setupAct"></select>
+    </div>
+    <div id="setupResult"></div>
+    <div class="err" id="setupErr"></div>
+    <div class="row"><button type="button" id="setupSave">Save my plan</button><button type="button" class="gray" id="setupSkip">Skip for now</button></div>
   </div>
 
 <div id="scanPop" class="pop" style="display:none">
@@ -773,6 +824,34 @@
   ];
   const DEFAULT_GOALS = { cal: 2000, p: 150, c: 250, f: 65, s: 50, fi: 30 };
 
+  // Every goal is a range (low to high). Accounts from before this saved a single number, so that
+  // number becomes a range around it: calories +/- 100, protein/carbs/fat +/- 10%.
+  function tidy5(n) { return Math.round(n / 5) * 5; }
+  function rangeText(lo, hi) { return lo === hi ? String(lo) : lo + '-' + hi; }
+
+  function normGoals(g) {
+    const o = Object.assign({}, DEFAULT_GOALS, g || {});
+    [['cal', 'calMin', 'calMax', 100, 0], ['p', 'pMin', 'pMax', 0, 0.1], ['c', 'cMin', 'cMax', 0, 0.1], ['f', 'fMin', 'fMax', 0, 0.1]].forEach(sp => {
+      let lo = o[sp[1]], hi = o[sp[2]];
+      const okLo = typeof lo === 'number' && isFinite(lo) && lo >= 0;
+      const okHi = typeof hi === 'number' && isFinite(hi) && hi >= 0;
+      if (!okLo || !okHi) {
+        const v = Number(o[sp[0]]) || 0;
+        if (v > 0) {
+          if (sp[3]) { lo = v - sp[3]; hi = v + sp[3]; }
+          else { lo = tidy5(v * (1 - sp[4])); hi = tidy5(v * (1 + sp[4])); }
+        } else { lo = 0; hi = 0; }
+      }
+      lo = Math.round(Math.max(0, lo));
+      hi = Math.round(Math.max(0, hi));
+      if (lo > hi) { const t = lo; lo = hi; hi = t; }
+      o[sp[1]] = lo;
+      o[sp[2]] = hi;
+      o[sp[0]] = Math.round((lo + hi) / 2);   // the middle of the range, used for the meal targets
+    });
+    return o;
+  }
+
   // Firebase settings (filled in when the file is built)
   const FIREBASE_CONFIG = {
   "apiKey": "AIzaSyBVHrWOo_zWyp0Q0abq8UFBMO4tjVnAEE0",
@@ -795,7 +874,9 @@
   let calYear = 0, calMonth = 0, monthDays = {};
   let wRange = 90;           // days shown on the weight graph (0 = all)
   let unsubMonth = null, unsubW = null;
-  let goals = Object.assign({}, DEFAULT_GOALS);
+  let goals = normGoals(DEFAULT_GOALS);
+  let profile = null;        // what the person told the plan screen (goal, height, weight...)
+  let setupDone = false, setupAsked = false, setupMode = 'first';
   let picked = null;
   let scanRun = null;        // the running camera scan: { stream, video, canvas }
   let currentMeal = 'breakfast';
@@ -975,6 +1056,7 @@
       });
       list.sort((a, b) => (a.date < b.date ? -1 : (a.date > b.date ? 1 : 0)));
       weights = list;
+      if (curView === 'setup') setupPrefillWeight();
       if (curView === 'weight') drawWeight();
       if (curView === 'cal') drawCalendar();
     }, syncError);
@@ -983,13 +1065,19 @@
   function listen() {
     unsubGoals = db.collection('users').doc(uid).onSnapshot(snap => {
       const d = snap.exists ? (snap.data() || {}) : {};
-      goals = Object.assign({}, DEFAULT_GOALS, d.goals || {});
+      goals = normGoals(d.goals);
+      profile = (d.profile && typeof d.profile === 'object') ? d.profile : null;
+      setupDone = d.setupDone === true;
       unit = d.unit === 'kg' ? 'kg' : 'lb';
       aiKey = (typeof d.aiKey === 'string') ? d.aiKey : '';
       aiModel = (typeof d.aiModel === 'string') ? d.aiModel : '';
       render();
       if (curView === 'cal') drawCalendar();
       if (curView === 'weight') drawWeight();
+      // First time on this account (new, or an older account): ask for the goal once. Wait for the
+      // server's answer so a half-loaded copy on the phone does not ask by mistake.
+      const fromCache = !!(snap.metadata && snap.metadata.fromCache);
+      if (!setupDone && !setupAsked && !fromCache) { setupAsked = true; openSetup('first'); }
     }, syncError);
     listenWeights();
     listenDay();
@@ -1002,7 +1090,10 @@
     weights = [];
     monthDays = {};
     openMeals = {};
-    goals = Object.assign({}, DEFAULT_GOALS);
+    goals = normGoals(DEFAULT_GOALS);
+    profile = null;
+    setupDone = false;
+    setupAsked = false;
     unit = 'lb';
     aiKey = '';
     aiModel = '';
@@ -1059,7 +1150,7 @@
 
   function showView(name) {
     curView = name;
-    ['load', 'auth', 'home', 'add', 'settings', 'cal', 'weight'].forEach(v => {
+    ['load', 'auth', 'home', 'add', 'settings', 'cal', 'weight', 'setup'].forEach(v => {
       $(v + 'View').style.display = (v === name) ? 'block' : 'none';
     });
     const withTabs = ['home', 'cal', 'weight', 'settings'].indexOf(name) !== -1;
@@ -1156,10 +1247,14 @@
   }
 
   function openSettings() {
-    $('gCal').value = goals.cal;
-    $('gP').value = goals.p;
-    $('gC').value = goals.c;
-    $('gF').value = goals.f;
+    $('gCalMin').value = goals.calMin;
+    $('gCalMax').value = goals.calMax;
+    $('gPMin').value = goals.pMin;
+    $('gPMax').value = goals.pMax;
+    $('gCMin').value = goals.cMin;
+    $('gCMax').value = goals.cMax;
+    $('gFMin').value = goals.fMin;
+    $('gFMax').value = goals.fMax;
     $('gS').value = goals.s;
     $('gFi').value = goals.fi;
     $('unitSel').value = unit;
@@ -1171,6 +1266,7 @@
     $('shareErr').textContent = '';
     drawShare();
     updateGoalHint();
+    $('planSummary').textContent = planSummaryText();
     showView('settings');
   }
 
@@ -1182,24 +1278,20 @@
   }
 
   function updateGoalHint() {
-    const p = numOrNull('gP') || 0;
-    const c = numOrNull('gC') || 0;
-    const f = numOrNull('gF') || 0;
+    const v = (id) => numOrNull(id) || 0;
+    const lo = v('gPMin') * 4 + v('gCMin') * 4 + v('gFMin') * 9;
+    const hi = v('gPMax') * 4 + v('gCMax') * 4 + v('gFMax') * 9;
     $('goalHint').textContent =
-      'Your protein, carbs and fat add up to about ' + (p * 4 + c * 4 + f * 9) + ' calories (protein and carbs are 4 calories per gram, fat is 9).';
+      'Your protein, carbs and fat add up to about ' + rangeText(lo, hi) + ' calories (protein and carbs are 4 calories per gram, fat is 9).';
   }
 
   function saveGoals() {
-    const next = {
-      cal: numOrNull('gCal'),
-      p: numOrNull('gP'),
-      c: numOrNull('gC'),
-      f: numOrNull('gF'),
-      s: numOrNull('gS'),
-      fi: numOrNull('gFi')
-    };
-    Object.keys(next).forEach(k => { if (next[k] == null) next[k] = goals[k]; });
-    goals = next;
+    const next = {};
+    ['calMin', 'calMax', 'pMin', 'pMax', 'cMin', 'cMax', 'fMin', 'fMax', 's', 'fi'].forEach(k => {
+      const n = numOrNull('g' + k.charAt(0).toUpperCase() + k.slice(1));
+      next[k] = (n == null) ? goals[k] : n;
+    });
+    goals = normGoals(Object.assign({}, goals, next));
     unit = ($('unitSel').value === 'kg') ? 'kg' : 'lb';
     aiKey = $('aiKey').value.trim();
     aiModel = $('aiModel').value.trim();
@@ -1212,23 +1304,35 @@
 
   // ---------- Home (Log) screen ----------
 
-  // opts.sub = indented under carbs, opts.minimum = a goal to reach (going over is good)
+  // goal = a number, or { min, max } for a range. opts.sub = indented under carbs,
+  // opts.minimum = a goal to reach (going over is good)
   function barHTML(label, value, goal, u, color, opts) {
     opts = opts || {};
+    let lo, hi;
+    if (goal && typeof goal === 'object') { lo = Number(goal.min) || 0; hi = Number(goal.max) || 0; }
+    else { lo = hi = Number(goal) || 0; }
     const v = Math.round(value);
-    const pct = goal > 0 ? Math.round(value / goal * 100) : 0;
-    const width = Math.min(100, pct);
-    const over = goal > 0 && value > goal && !opts.minimum;
-    const left = '<strong>' + label + '</strong> ' + v + (goal > 0 ? ' / ' + goal : '') + ' ' + u;
+    const has = hi > 0;
+    const isRange = has && hi > lo;
+    const width = has ? Math.min(100, Math.round(value / hi * 100)) : 0;
+    const over = has && value > hi && !opts.minimum;
+    const left = '<strong>' + label + '</strong> ' + v + (has ? ' / ' + rangeText(lo, hi) : '') + ' ' + u;
     let right = 'no goal set';
-    if (goal > 0) {
-      right = pct + '%';
-      if (over) right += ' (over by ' + Math.round(value - goal) + ' ' + u + ')';
-      else if (opts.minimum && value >= goal) right += ' (goal reached)';
+    if (has) {
+      if (isRange) {
+        if (over) right = 'over by ' + Math.round(value - hi) + ' ' + u;
+        else if (value >= lo) right = 'in range';
+        else right = Math.round(lo - value) + ' ' + u + ' to go';
+      } else {
+        right = Math.round(value / hi * 100) + '%';
+        if (over) right += ' (over by ' + Math.round(value - hi) + ' ' + u + ')';
+        else if (opts.minimum && value >= hi) right += ' (goal reached)';
+      }
     }
     const style = 'width:' + width + '%' + (over ? '' : ';background:' + color);
+    const mark = (isRange && lo > 0) ? '<div class="bar-mark" style="left:' + (lo / hi * 100) + '%"></div>' : '';
     return '<div class="bar-item' + (opts.sub ? ' sub' : '') + '"><div class="bar-head"><span>' + left + '</span><span class="right">' + right + '</span></div>' +
-      '<div class="bar-track"><div class="bar-fill' + (over ? ' over' : '') + '" style="' + style + '"></div></div></div>';
+      '<div class="bar-track"><div class="bar-fill' + (over ? ' over' : '') + '" style="' + style + '"></div>' + mark + '</div></div>';
   }
 
   // Spread the calories you have left evenly over the meals still to come.
@@ -1302,10 +1406,10 @@
     $('tf').textContent = Math.round(tf);
 
     $('bars').innerHTML =
-      barHTML('Calories', total, goals.cal, 'cal', '#2e7d32') +
-      barHTML('Protein', tp, goals.p, 'g', '#1565c0') +
-      barHTML('Fat', tf, goals.f, 'g', '#8e24aa') +
-      barHTML('Carbs', tc, goals.c, 'g', '#f9a825') +
+      barHTML('Calories', total, { min: goals.calMin, max: goals.calMax }, 'cal', '#2e7d32') +
+      barHTML('Protein', tp, { min: goals.pMin, max: goals.pMax }, 'g', '#1565c0') +
+      barHTML('Fat', tf, { min: goals.fMin, max: goals.fMax }, 'g', '#8e24aa') +
+      barHTML('Carbs', tc, { min: goals.cMin, max: goals.cMax }, 'g', '#f9a825') +
       barHTML('Sugar', ts, goals.s, 'g', '#ef6c00', { sub: true }) +
       barHTML('Fiber', tfi, goals.fi, 'g', '#6d4c41', { sub: true, minimum: true });
     $('barsNote').textContent = (missing && list.length > 0)
@@ -1468,7 +1572,7 @@
         cls += ' tracked';
         tracked++;
         sum += info.cals;
-        if (goals.cal > 0 && info.cals > goals.cal) cls += ' over';
+        if (goals.calMax > 0 && info.cals > goals.calMax) cls += ' over';
       }
       if (key === tk) cls += ' today';
       b.className = cls;
@@ -3110,6 +3214,221 @@
     stopScan().then(() => { if (curView === 'add' && curPane === 'scan') startScan(); });
   });
 
+  // ---------- Plan setup: bulking, cutting or recomp ----------
+
+  const ACTIVITY = [
+    ['sed', 'Mostly sitting, little exercise', 1.2],
+    ['light', 'Light: exercise 1-3 days a week', 1.375],
+    ['mod', 'Moderate: exercise 3-5 days a week', 1.55],
+    ['high', 'Very active: exercise 6-7 days a week, or a physical job', 1.725]
+  ];
+  const RATES = {
+    lb: { cut: [0.5, 1, 1.5, 2], bulk: [0.25, 0.5, 0.75, 1] },
+    kg: { cut: [0.25, 0.5, 0.75, 1], bulk: [0.1, 0.25, 0.35, 0.5] }
+  };
+  const RATE_DEFAULT = { lb: { cut: 1, bulk: 0.5 }, kg: { cut: 0.5, bulk: 0.25 } };
+  const GOAL_NAME = { cut: 'Cutting', recomp: 'Recomp', bulk: 'Bulking' };
+  const GOAL_NOTES = {
+    cut: 'Eat a little less than you burn to lose fat. Protein stays high to protect your muscle.',
+    recomp: 'Eat about what you burn, with lots of protein, to slowly build muscle while losing fat.',
+    bulk: 'Eat a little more than you burn to build muscle.'
+  };
+  let setupSt = { goal: '', rate: 0, unit: 'lb', sex: '' };
+
+  // p = { goal, rateKg, weightKg, heightCm, age, sex, act }  ->  calorie and macro ranges
+  function planFor(p) {
+    const bmr = 10 * p.weightKg + 6.25 * p.heightCm - 5 * p.age + (p.sex === 'f' ? -161 : 5);
+    const act = ACTIVITY.find(a => a[0] === p.act) || ACTIVITY[1];
+    const maint = bmr * act[2];
+    const delta = (p.goal === 'recomp') ? 0 : (Number(p.rateKg) || 0) * 1100;   // 7700 calories per kg of body weight, spread over 7 days
+    let target = p.goal === 'cut' ? maint - delta : (p.goal === 'bulk' ? maint + delta : maint);
+    const floor = p.sex === 'f' ? 1200 : 1500;
+    let floored = false;
+    if (target < floor) { target = floor; floored = true; }
+    const center = Math.round(target / 50) * 50;
+    let calMin = center - 100, calMax = center + 100;
+    if (calMin < floor) { calMin = floor; calMax = floor + 200; floored = true; }
+    const mid = (calMin + calMax) / 2;
+    const lb = p.weightKg * LB;
+    const perLb = p.goal === 'cut' ? 1.1 : (p.goal === 'bulk' ? 0.9 : 1.0);
+    const P = Math.min(lb * perLb, mid * 0.4 / 4);                                   // protein, but never more than 40% of calories
+    const F = Math.min(Math.max(lb * 0.3, mid * 0.2 / 9), mid * 0.35 / 9);           // fat: 0.3 g per lb, kept between 20% and 35% of calories
+    const C = Math.max(50, (mid - P * 4 - F * 9) / 4);                               // carbs fill the rest
+    const rg = (x) => [tidy5(x * 0.9), tidy5(x * 1.1)];
+    const pr = rg(P), cr = rg(C), fr = rg(F);
+    return { maint: Math.round(maint / 10) * 10, calMin: calMin, calMax: calMax, pMin: pr[0], pMax: pr[1], cMin: cr[0], cMax: cr[1], fMin: fr[0], fMax: fr[1], floored: floored };
+  }
+
+  function setupHeightCm() {
+    if (setupSt.unit === 'lb') return (Number($('setupFt').value) || 0) * 30.48 + (Number($('setupIn').value) || 0) * 2.54;
+    return Number($('setupCm').value) || 0;
+  }
+
+  function setupSetHeight(cm) {
+    if (setupSt.unit === 'lb') {
+      if (!(cm > 0)) { $('setupFt').value = ''; $('setupIn').value = ''; return; }
+      let totalIn = Math.round(cm / 2.54);
+      $('setupFt').value = Math.floor(totalIn / 12);
+      $('setupIn').value = totalIn % 12;
+    } else {
+      $('setupCm').value = cm > 0 ? Math.round(cm) : '';
+    }
+  }
+
+  // Reads the form. Returns { p } when everything is filled in, otherwise { err } saying what is missing.
+  function readSetup() {
+    const w = Number($('setupW').value);
+    const age = Number($('setupAge').value);
+    const cm = setupHeightCm();
+    const weightKg = setupSt.unit === 'lb' ? w / LB : w;
+    if (!setupSt.goal) return { err: 'Pick Cutting, Recomp or Bulking.' };
+    if (!(weightKg >= 25 && weightKg <= 350)) return { err: 'Type your weight in ' + (setupSt.unit === 'lb' ? 'pounds.' : 'kilograms.') };
+    if (!(cm >= 120 && cm <= 250)) return { err: setupSt.unit === 'lb' ? 'Type your height in feet and inches.' : 'Type your height in cm.' };
+    if (!(age >= 13 && age <= 100)) return { err: 'Type your age (13 to 100).' };
+    if (!setupSt.sex) return { err: 'Pick Male or Female.' };
+    const rateKg = setupSt.goal === 'recomp' ? 0 : (setupSt.unit === 'lb' ? setupSt.rate / LB : setupSt.rate);
+    return { p: { goal: setupSt.goal, rateKg: Math.round(rateKg * 1000) / 1000, weightKg: Math.round(weightKg * 1000) / 1000, heightCm: Math.round(cm * 10) / 10, age: Math.round(age), sex: setupSt.sex, act: $('setupAct').value } };
+  }
+
+  function drawSetup() {
+    const u = setupSt.unit;
+    Array.prototype.forEach.call($('setupGoal').children, b => b.classList.toggle('on', b.getAttribute('data-v') === setupSt.goal));
+    Array.prototype.forEach.call($('setupUnit').children, b => b.classList.toggle('on', b.getAttribute('data-v') === u));
+    Array.prototype.forEach.call($('setupSex').children, b => b.classList.toggle('on', b.getAttribute('data-v') === setupSt.sex));
+    $('setupGoalNote').textContent = GOAL_NOTES[setupSt.goal] || '';
+    $('setupWLabel').textContent = 'Weight (' + u + ')';
+    $('setupHftWrap').style.display = (u === 'lb') ? 'block' : 'none';
+    $('setupHcmWrap').style.display = (u === 'lb') ? 'none' : 'block';
+
+    const showRate = setupSt.goal === 'cut' || setupSt.goal === 'bulk';
+    $('setupRateWrap').style.display = showRate ? 'block' : 'none';
+    if (showRate) {
+      $('setupRateLabel').textContent = (setupSt.goal === 'cut' ? 'How much do you want to lose per week?' : 'How much do you want to gain per week?');
+      const box = $('setupRate');
+      box.innerHTML = '';
+      RATES[u][setupSt.goal].forEach(v => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = v + ' ' + u;
+        b.classList.toggle('on', v === setupSt.rate);
+        b.onclick = () => { setupSt.rate = v; drawSetup(); };
+        box.appendChild(b);
+      });
+    }
+
+    const r = readSetup();
+    const res = $('setupResult');
+    if (!r.p) {
+      res.textContent = 'Fill in everything above to see your daily calories and macros.';
+      return;
+    }
+    const pl = planFor(r.p);
+    let html = '<strong>Your daily plan</strong><br>' +
+      'Calories: <strong>' + rangeText(pl.calMin, pl.calMax) + '</strong><br>' +
+      'Protein: <strong>' + rangeText(pl.pMin, pl.pMax) + ' g</strong><br>' +
+      'Carbs: <strong>' + rangeText(pl.cMin, pl.cMax) + ' g</strong><br>' +
+      'Fat: <strong>' + rangeText(pl.fMin, pl.fMax) + ' g</strong>';
+    let note = 'You burn about ' + pl.maint + ' calories a day. ';
+    if (r.p.goal === 'cut') note += 'Cutting: about ' + setupSt.rate + ' ' + u + ' lost per week.';
+    else if (r.p.goal === 'bulk') note += 'Bulking: about ' + setupSt.rate + ' ' + u + ' gained per week.';
+    else note += 'Recomp: staying about the same weight.';
+    if (pl.floored) note += ' Calories were raised to a safe minimum, so you may lose slower than you picked.';
+    res.innerHTML = html + '<div class="fine">' + note + '</div>';
+  }
+
+  function latestWeightKg() { return weights.length ? weights[weights.length - 1].kg : null; }
+
+  function setupPrefillWeight() {
+    if (!$('setupW').value && latestWeightKg()) {
+      $('setupW').value = r1(setupSt.unit === 'lb' ? latestWeightKg() * LB : latestWeightKg());
+      drawSetup();
+    }
+  }
+
+  function nearestRate(goal, u, rateKg) {
+    const list = RATES[u][goal];
+    const want = u === 'lb' ? rateKg * LB : rateKg;
+    let best = list[0];
+    list.forEach(v => { if (Math.abs(v - want) < Math.abs(best - want)) best = v; });
+    return best;
+  }
+
+  // mode 'first' = the one-time screen after logging in, 'settings' = opened from Settings
+  function openSetup(mode) {
+    setupMode = mode;
+    const pr = profile || {};
+    setupSt.unit = unit;
+    setupSt.goal = (pr.goal === 'cut' || pr.goal === 'bulk' || pr.goal === 'recomp') ? pr.goal : '';
+    setupSt.sex = (pr.sex === 'm' || pr.sex === 'f') ? pr.sex : '';
+    setupSt.rate = (setupSt.goal === 'cut' || setupSt.goal === 'bulk')
+      ? nearestRate(setupSt.goal, unit, Number(pr.rateKg) || 0)
+      : RATE_DEFAULT[unit].cut;
+    $('setupAct').value = ACTIVITY.some(a => a[0] === pr.act) ? pr.act : 'light';
+    $('setupAge').value = pr.age || '';
+    const wKg = Number(pr.weightKg) || latestWeightKg() || 0;
+    $('setupW').value = wKg > 0 ? r1(unit === 'lb' ? wKg * LB : wKg) : '';
+    setupSetHeight(Number(pr.heightCm) || 0);
+    $('setupErr').textContent = '';
+    $('setupTitle').textContent = (mode === 'first') ? 'Set up your plan' : 'Your calories and macros';
+    $('setupSkip').textContent = (mode === 'first') ? 'Skip for now' : 'Cancel';
+    drawSetup();
+    showView('setup');
+  }
+
+  function setSetupUnit(newU) {
+    const old = setupSt.unit;
+    if (old === newU) return;
+    const w = Number($('setupW').value);
+    const cm = setupHeightCm();
+    // Switching units back and forth should not drift (180 lb -> 81.6 kg -> 180 lb), so remember the exact weight
+    // for as long as the box still shows what we put there.
+    let kg = old === 'lb' ? w / LB : w;
+    if (setupSt.baseKg > 0 && $('setupW').value === setupSt.baseShown) kg = setupSt.baseKg;
+    setupSt.unit = newU;
+    $('setupW').value = w > 0 ? String(r1(newU === 'lb' ? kg * LB : kg)) : '';
+    setupSt.baseKg = w > 0 ? kg : 0;
+    setupSt.baseShown = $('setupW').value;
+    setupSetHeight(cm);
+    if (setupSt.goal === 'cut' || setupSt.goal === 'bulk') setupSt.rate = RATE_DEFAULT[newU][setupSt.goal];
+    drawSetup();
+  }
+
+  function saveSetup() {
+    const r = readSetup();
+    if (!r.p) { $('setupErr').textContent = r.err; return; }
+    const pl = planFor(r.p);
+    goals = normGoals(Object.assign({}, goals, { calMin: pl.calMin, calMax: pl.calMax, pMin: pl.pMin, pMax: pl.pMax, cMin: pl.cMin, cMax: pl.cMax, fMin: pl.fMin, fMax: pl.fMax }));
+    unit = setupSt.unit;
+    profile = r.p;
+    setupDone = true;
+    try {
+      db.collection('users').doc(uid).set({ goals: goals, unit: unit, profile: profile, setupDone: true }, { merge: true }).catch(syncError);
+    } catch (e) { syncError(e); }
+    goHome();
+  }
+
+  function skipSetup() {
+    if (setupMode !== 'first') { openSettings(); return; }
+    // keep the goals they have (older accounts get them as ranges) and do not ask again
+    goals = normGoals(goals);
+    setupDone = true;
+    try {
+      db.collection('users').doc(uid).set({ goals: goals, setupDone: true }, { merge: true }).catch(syncError);
+    } catch (e) { syncError(e); }
+    goHome();
+  }
+
+  function planSummaryText() {
+    const pr = profile;
+    if (!pr || !GOAL_NAME[pr.goal]) return 'You have not set up a plan yet.';
+    let t = 'Your plan: ' + GOAL_NAME[pr.goal];
+    if (pr.goal !== 'recomp' && Number(pr.rateKg) > 0) {
+      const v = nearestRate(pr.goal, unit, Number(pr.rateKg));
+      t += ', about ' + v + ' ' + unit + ' per week';
+    }
+    return t + '.';
+  }
+
   // ---------- Buttons ----------
 
   $('homeBtn').onclick = goHome;
@@ -3117,12 +3436,29 @@
   $('backBtn').onclick = goHome;
   $('settingsBackBtn').onclick = goHome;
   $('saveGoals').onclick = saveGoals;
+  $('planBtn').onclick = () => openSetup('settings');
+  $('setupSave').onclick = saveSetup;
+  $('setupSkip').onclick = skipSetup;
+  Array.prototype.forEach.call($('setupGoal').children, b => {
+    b.onclick = () => {
+      const g = b.getAttribute('data-v');
+      if (g !== setupSt.goal && (g === 'cut' || g === 'bulk')) setupSt.rate = RATE_DEFAULT[setupSt.unit][g];
+      setupSt.goal = g;
+      $('setupErr').textContent = '';
+      drawSetup();
+    };
+  });
+  Array.prototype.forEach.call($('setupUnit').children, b => { b.onclick = () => setSetupUnit(b.getAttribute('data-v')); });
+  Array.prototype.forEach.call($('setupSex').children, b => { b.onclick = () => { setupSt.sex = b.getAttribute('data-v'); $('setupErr').textContent = ''; drawSetup(); }; });
+  ACTIVITY.forEach(a => { const o = document.createElement('option'); o.value = a[0]; o.textContent = a[1]; $('setupAct').appendChild(o); });
+  ['setupW', 'setupFt', 'setupIn', 'setupCm', 'setupAge'].forEach(id => $(id).addEventListener('input', () => { $('setupErr').textContent = ''; drawSetup(); }));
+  $('setupAct').addEventListener('change', drawSetup);
   $('themeSel').onchange = () => {
     try { localStorage.setItem('theme', $('themeSel').value); } catch (e) {}
     applyTheme();
   };
   $('aiKey').addEventListener('input', updateKeyKind);
-  ['gCal', 'gP', 'gC', 'gF'].forEach(id => $(id).addEventListener('input', updateGoalHint));
+  ['gPMin', 'gPMax', 'gCMin', 'gCMax', 'gFMin', 'gFMax'].forEach(id => $(id).addEventListener('input', updateGoalHint));
 
   $('photoBtn').onclick = () => {
     const st = $('photoStatus');
