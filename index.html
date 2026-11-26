@@ -141,7 +141,7 @@
   #setupResult .fine { color: var(--oktext); opacity: 0.85; margin: 6px 0 0; }
   #goalHint { color: var(--muted2); font-size: 0.9em; margin-bottom: 12px; }
   .settabs { display: flex; margin-bottom: 14px; border-bottom: 2px solid var(--border); }
-  button.settab { flex: 1; background: none; color: var(--muted2); border-radius: 0; padding: 10px 2px; font-size: 0.85em; font-weight: 600; border-bottom: 3px solid transparent; margin-bottom: -2px; }
+  button.settab { flex: 1; background: none; color: var(--muted2); border-radius: 0; padding: 10px 2px; font-size: 0.8em; font-weight: 600; border-bottom: 3px solid transparent; margin-bottom: -2px; }
   button.settab.active { color: var(--text); border-bottom-color: #2e7d32; }
   details.dd { background: var(--card); border-radius: 12px; margin-bottom: 10px; }
   details.dd > summary { position: relative; padding: 14px 40px 14px 14px; font-weight: 600; cursor: pointer; list-style: none; }
@@ -150,10 +150,10 @@
   details.dd[open] > summary::after { content: "\25B4"; }
   details.dd > .ddBody { padding: 0 14px 6px; }
   #saveGoals { margin-top: 6px; }
-  details.dd li { background: var(--card2); }
-  #ddBoard h3 { margin: 14px 0 8px; }
-  #ddBoard li.me { outline: 2px solid #2e7d32; }
-  #ddBoard li .right { color: var(--muted2); white-space: nowrap; }
+  #spBoard h3 { margin: 4px 0 8px; }
+  #spBoard ul { margin-bottom: 16px; }
+  #spBoard li.me { outline: 2px solid #2e7d32; }
+  #spBoard li .right { color: var(--muted2); white-space: nowrap; }
 
   /* login */
   .err { color: var(--red-text); margin-bottom: 10px; }
@@ -452,6 +452,7 @@
       <button type="button" class="settab" role="tab" id="stabAi" data-t="ai" aria-selected="false" aria-controls="spAi" tabindex="-1">AI Photo</button>
       <button type="button" class="settab" role="tab" id="stabLook" data-t="look" aria-selected="false" aria-controls="spLook" tabindex="-1">Appearance</button>
       <button type="button" class="settab" role="tab" id="stabAcct" data-t="acct" aria-selected="false" aria-controls="spAcct" tabindex="-1">Account</button>
+      <button type="button" class="settab" role="tab" id="stabBoard" data-t="board" aria-selected="false" aria-controls="spBoard" tabindex="-1">Leaders</button>
     </div>
 
     <div class="setPanel" id="spCal" role="tabpanel" aria-labelledby="stabCal">
@@ -515,21 +516,21 @@
 
     <div class="setPanel" id="spAcct" role="tabpanel" aria-labelledby="stabAcct" style="display:none">
       <div class="fine" id="acctLine"></div>
-      <details class="dd" id="ddBoard">
-        <summary>Leader boards</summary>
-        <div class="ddBody">
-          <div class="fine">See who logged the most calories. Pick a nickname to join. Only your nickname, today's calories and your all-time calories are shared with other people who use this app. Clear the nickname to leave.</div>
-          <div class="field"><label for="boardName">Your nickname on the boards</label><input id="boardName" maxlength="20" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
-          <div class="row"><button type="button" id="boardSave">Save nickname</button><button type="button" class="gray" id="boardRefresh">Refresh</button></div>
-          <div class="fine" id="boardMsg"></div>
-          <div class="fine" id="boardStatus"></div>
-          <h3>Most calories today</h3>
-          <ul id="boardToday"></ul>
-          <h3>Most calories all time</h3>
-          <ul id="boardAll"></ul>
-        </div>
-      </details>
+      <div class="field"><label for="boardName">Nickname</label><input id="boardName" maxlength="20" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
+      <div class="fine" style="margin-top:-6px">Your nickname is how you show up on the Leaders tab. Leave it empty to stay off the boards. Only your nickname, today's calories and your highest single day are shared with other people who use this app.</div>
+      <div class="row"><button type="button" id="boardSave">Save nickname</button></div>
+      <div class="fine" id="boardMsg"></div>
       <button class="gray" id="logoutBtn">Log out</button>
+    </div>
+
+    <div class="setPanel" id="spBoard" role="tabpanel" aria-labelledby="stabBoard" style="display:none">
+      <div class="fine" id="boardHint"></div>
+      <h3>Most calories today</h3>
+      <ul id="boardToday"></ul>
+      <h3>Most calories in a single day</h3>
+      <ul id="boardAll"></ul>
+      <div class="fine" id="boardStatus"></div>
+      <button type="button" class="gray" id="boardRefresh">Refresh</button>
     </div>
 
     <button id="saveGoals">Save settings</button>
@@ -1362,7 +1363,7 @@
     window.scrollTo(0, 0);
   }
 
-  const SET_PANELS = { cal: 'spCal', ai: 'spAi', look: 'spLook', acct: 'spAcct' };
+  const SET_PANELS = { cal: 'spCal', ai: 'spAi', look: 'spLook', acct: 'spAcct', board: 'spBoard' };
   function showSettingsTab(t) {
     if (!SET_PANELS[t]) t = 'cal';
     Object.keys(SET_PANELS).forEach(k => { $(SET_PANELS[k]).style.display = (k === t) ? 'block' : 'none'; });
@@ -1372,8 +1373,8 @@
       b.setAttribute('aria-selected', on ? 'true' : 'false');
       b.tabIndex = on ? 0 : -1;
     });
-    $('saveGoals').style.display = (t === 'acct') ? 'none' : '';
-    if (t === 'acct' && $('ddBoard').open) loadBoard();
+    $('saveGoals').style.display = (t === 'acct' || t === 'board') ? 'none' : '';
+    if (t === 'board') loadBoard();
   }
 
   // tab = which Settings tab to land on ('cal', 'ai', 'look', 'acct'); anything else = Calories
@@ -1923,14 +1924,15 @@
 
   // ---------- Leader boards ----------
   // Each person who picks a nickname shares one small record, board/{their id}:
-  //   { name, day (today), dayCals (calories today), total (calories all time) }
-  // Today's calories come from a live watch on today's foods. "All time" = every earlier day (counted once a
-  // day, and again after an older day is changed) + today.
+  //   { name, day (today), dayCals (calories today), total (their highest single day ever) }
+  // (the database calls the last one "total"; it holds the best single day, not a sum.)
+  // Today's calories come from a live watch on today's foods. The best single day comes from every earlier day
+  // (counted once a day, and again after an older day is changed) compared with today.
 
   const BOARD_NAME_MAX = 20;
   const fmtCal = (n) => Number(n).toLocaleString('en-US');
 
-  function pastCacheKey() { return 'ft_past_' + uid; }
+  function pastCacheKey() { return 'ft_best_' + uid; }
 
   function stopBoardWatch() {
     if (unsubBoard) { unsubBoard(); unsubBoard = null; }
@@ -1962,15 +1964,21 @@
     const key = todayKey(), cut = dayRange(key)[0], me = uid, seq = ++pastSeq;
     try {
       const c = JSON.parse(localStorage.getItem(pastCacheKey()) || 'null');
-      if (c && c.day === key && typeof c.sum === 'number') { boardPast = c.sum; queuePublish(); return; }
+      if (c && c.day === key && typeof c.best === 'number') { boardPast = c.best; queuePublish(); return; }
     } catch (e) {}
     entriesRef().where('t', '<', cut).get().then(snap => {
       if (seq !== pastSeq || uid !== me) return;
       if (snap.metadata && snap.metadata.fromCache) return;   // only a partial copy on this phone: wait for the real count
-      let n = 0;
-      snap.forEach(d => { n += Number((d.data() || {}).cals) || 0; });
-      boardPast = n;
-      try { localStorage.setItem(pastCacheKey(), JSON.stringify({ day: key, sum: n })); } catch (e) {}
+      const perDay = {};
+      snap.forEach(d => {
+        const it = d.data() || {};
+        const k = keyOf(new Date(Number(it.t) || 0));
+        perDay[k] = (perDay[k] || 0) + (Number(it.cals) || 0);
+      });
+      let best = 0;
+      Object.keys(perDay).forEach(k => { if (perDay[k] > best) best = perDay[k]; });
+      boardPast = best;
+      try { localStorage.setItem(pastCacheKey(), JSON.stringify({ day: key, best: best })); } catch (e) {}
       queuePublish();
     }).catch(() => {});
   }
@@ -1990,12 +1998,12 @@
 
   function publishBoard() {
     if (!uid || !db || !boardName || boardToday == null || boardPast == null) return;
-    const rec = { name: boardName, day: todayKey(), dayCals: Math.round(boardToday), total: Math.round(boardPast + boardToday) };
+    const rec = { name: boardName, day: todayKey(), dayCals: Math.round(boardToday), total: Math.round(Math.max(boardPast, boardToday)) };
     const sig = JSON.stringify(rec);
     if (sig === boardLast) return;
     boardLast = sig;
     try {
-      db.collection('board').doc(uid).set(rec).then(() => { if ($('ddBoard').open) loadBoard(); }).catch(e => { boardLast = ''; boardFail(e); });
+      db.collection('board').doc(uid).set(rec).then(() => { if (boardShowing()) loadBoard(); }).catch(e => { boardLast = ''; boardFail(e); });
     } catch (e) { boardLast = ''; boardFail(e); }
   }
 
@@ -2030,8 +2038,11 @@
     });
   }
 
+  function boardShowing() { return curView === 'settings' && $('spBoard').style.display !== 'none'; }
+
   function loadBoard() {
     if (!uid || !db) return;
+    $('boardHint').textContent = boardName ? '' : 'You are not on the boards yet. Set a nickname in the Account tab to join.';
     $('boardStatus').className = 'fine';
     $('boardStatus').textContent = 'Loading...';
     db.collection('board').get().then(snap => {
@@ -2067,7 +2078,6 @@
       stopBoardWatch();
       try { db.collection('board').doc(uid).delete().catch(boardFail); } catch (e) { boardFail(e); }
       msg.textContent = 'You are off the leader boards.';
-      setTimeout(() => { if ($('ddBoard').open) loadBoard(); }, 800);
     } else {
       startBoardWatch();
       msg.textContent = 'Saved. You will show up in a moment.';
@@ -2163,7 +2173,6 @@
   $('boardSave').onclick = saveBoardName;
   $('boardRefresh').onclick = loadBoard;
   $('boardName').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); saveBoardName(); } });
-  $('ddBoard').addEventListener('toggle', () => { if ($('ddBoard').open) loadBoard(); });
   $('editPop').addEventListener('click', (e) => { if (e.target === $('editPop')) closeEdit(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && editing) closeEdit(); });
 
