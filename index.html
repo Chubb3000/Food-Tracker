@@ -73,6 +73,13 @@
   ul { list-style: none; padding: 0; margin: 0; }
   li { background: var(--card); padding: 12px; border-radius: 8px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   li button.del { background: #c62828; padding: 6px 10px; }
+  li span.tap { flex: 1; cursor: pointer; }
+  #editPop .popCard { max-height: 94vh; overflow-y: auto; }
+  .cols { display: grid; gap: 8px; }
+  .cols3 { grid-template-columns: repeat(3, 1fr); }
+  .cols2 { grid-template-columns: repeat(2, 1fr); }
+  .cols .field { margin-bottom: 8px; }
+  .cols .field label { font-size: 0.85em; }
   ul.pick li { cursor: pointer; flex-direction: column; align-items: flex-start; }
   ul.pick li small, li .macros { color: var(--muted); font-size: 0.85em; }
   .box { background: var(--okbg); padding: 12px; border-radius: 8px; margin-bottom: 12px; display: none; }
@@ -281,6 +288,7 @@
     <div class="bars" id="bars"></div>
     <div class="fine" id="barsNote"></div>
     <div id="meals"></div>
+    <div class="fine" id="editHint" style="display:none">Tip: tap a food to change how many you had or edit its numbers.</div>
     <div class="fine" id="planNote"></div>
   </div>
 
@@ -557,6 +565,27 @@
     </div>
    </div>
   </div>
+
+<div id="editPop" class="pop" style="display:none">
+  <form class="popCard" id="editForm" role="dialog" aria-modal="true" aria-labelledby="editTitle" novalidate>
+    <div class="popTitle" id="editTitle">Edit food</div>
+    <div class="field"><label for="eName">Name</label><input id="eName" autocomplete="off"></div>
+    <div class="field"><label for="eQty">How many?</label><input id="eQty" type="number" step="any" min="0" inputmode="decimal"></div>
+    <div class="fine" style="margin:-6px 0 10px">Change this and the numbers below change with it.</div>
+    <div class="field"><label for="eCal">Calories</label><input id="eCal" type="number" step="any" min="0" inputmode="decimal"></div>
+    <div class="cols cols3">
+      <div class="field"><label for="eP">Protein (g)</label><input id="eP" type="number" step="any" min="0" inputmode="decimal"></div>
+      <div class="field"><label for="eC">Carbs (g)</label><input id="eC" type="number" step="any" min="0" inputmode="decimal"></div>
+      <div class="field"><label for="eF">Fat (g)</label><input id="eF" type="number" step="any" min="0" inputmode="decimal"></div>
+    </div>
+    <div class="cols cols2">
+      <div class="field"><label for="eS">Sugar (g)</label><input id="eS" type="number" step="any" min="0" inputmode="decimal"></div>
+      <div class="field"><label for="eFi">Fiber (g)</label><input id="eFi" type="number" step="any" min="0" inputmode="decimal"></div>
+    </div>
+    <div id="eErr" class="err"></div>
+    <div class="row" style="margin-bottom:0"><button type="submit" id="eSave">Save</button><button type="button" id="eCancel" class="gray">Cancel</button></div>
+  </form>
+</div>
 
 <div id="scanPop" class="pop" style="display:none">
   <div class="popCard" role="dialog" aria-live="polite">
@@ -1465,6 +1494,7 @@
   function render() {
     if (!uid) return;
     const list = data[viewKey] || [];
+    $('editHint').style.display = list.length > 0 ? 'block' : 'none';
     let total = 0, tp = 0, tc = 0, tf = 0, ts = 0, tfi = 0, missing = false;
     list.forEach(item => {
       total += item.cals;
@@ -1564,6 +1594,12 @@
         entries.forEach(item => {
           const li = document.createElement('li');
           const span = document.createElement('span');
+          span.className = 'tap';
+          span.setAttribute('role', 'button');
+          span.tabIndex = 0;
+          span.title = 'Tap to edit';
+          span.onclick = () => openEdit(item);
+          span.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEdit(item); } };
           span.textContent = item.name + ' - ' + item.cals + ' cal';
           const parts = [];
           if (item.p != null) parts.push('P ' + item.p + 'g  C ' + item.c + 'g  F ' + item.f + 'g');
@@ -1854,6 +1890,94 @@
     showMsg('Added ' + name + ' (' + amounts.k + ' cal) to ' + mealLabel(currentMeal) + '.');
     return addP;
   }
+
+  // ---------- Edit a food that is already logged ----------
+
+  let editing = null;   // { id, item, base, qty } while the pop-up is open
+  // The app writes "Name x2" when more than one was logged, so read that back as name + how many
+  const QTY_SUFFIX = /^(.*\S) x(\d+(?:\.\d+)?)$/;
+
+  function fmtNum(n) { return String(Math.round(n * 100) / 100); }
+
+  function openEdit(item) {
+    if (!item || !item.id) return;
+    let base = String(item.name == null ? '' : item.name), qty = 1;
+    const m = QTY_SUFFIX.exec(base);
+    if (m && Number(m[2]) > 0) { base = m[1]; qty = Number(m[2]); }
+    editing = { id: item.id, item: item, base: base, qty: qty };
+    $('eName').value = base;
+    $('eQty').value = fmtNum(qty);
+    putEdit(1);
+    $('eErr').textContent = '';
+    $('editPop').style.display = 'flex';
+    $('eQty').focus();
+    $('eQty').select();
+  }
+
+  // Fill the number boxes with the logged amounts times f (1 = as logged)
+  function putEdit(f) {
+    const it = editing.item;
+    const one = (v, whole) => (v == null) ? '' : String(f === 1 ? v : (whole ? Math.round(v * f) : round1(v * f)));
+    $('eCal').value = one(it.cals, true);
+    $('eP').value = one(it.p);
+    $('eC').value = one(it.c);
+    $('eF').value = one(it.f);
+    $('eS').value = one(it.s);
+    $('eFi').value = one(it.fi);
+  }
+
+  function closeEdit() {
+    $('editPop').style.display = 'none';
+    editing = null;
+  }
+
+  function saveEdit() {
+    if (!editing) return;
+    const fail = (msg) => { $('eErr').textContent = msg; };
+    const q = Number($('eQty').value);
+    if ($('eQty').value === '' || !isFinite(q) || q <= 0) return fail('Type how many you had (more than 0).');
+    let base = $('eName').value.trim();
+    if (!base) return fail('Type a name.');
+    if (q !== 1) { const m = QTY_SUFFIX.exec(base); if (m) base = m[1]; }
+    const read = (id, label) => {
+      const raw = $(id).value.trim();
+      if (raw === '') return null;
+      const n = Number(raw);
+      if (!isFinite(n) || n < 0) { fail(label + ' needs a number, 0 or more.'); return NaN; }
+      return n;
+    };
+    const k = read('eCal', 'Calories'), p = read('eP', 'Protein'), c = read('eC', 'Carbs'), f = read('eF', 'Fat'), sg = read('eS', 'Sugar'), fi = read('eFi', 'Fiber');
+    if ([k, p, c, f, sg, fi].some(v => v !== null && isNaN(v))) return;
+    if (k === null) return fail('Type the calories.');
+    const next = Object.assign({}, editing.item);
+    delete next.id;
+    ['p', 'c', 'f', 's', 'fi'].forEach(x => { delete next[x]; });
+    next.name = (q === 1) ? base : base + ' x' + fmtNum(q);
+    next.cals = Math.round(k);
+    if (p !== null || c !== null || f !== null) {
+      next.p = round1(p || 0);
+      next.c = round1(c || 0);
+      next.f = round1(f || 0);
+    }
+    if (sg !== null) next.s = round1(sg);
+    if (fi !== null) next.fi = round1(fi);
+    try {
+      entriesRef().doc(editing.id).set(next).catch(syncError);
+    } catch (e) { syncError(e); return; }
+    closeEdit();
+  }
+
+  $('eQty').addEventListener('input', () => {
+    if (!editing) return;
+    const q = Number($('eQty').value);
+    if ($('eQty').value === '' || !isFinite(q) || q <= 0) return;
+    $('eErr').textContent = '';
+    putEdit(q / editing.qty);
+  });
+  $('editForm').addEventListener('submit', (e) => { e.preventDefault(); saveEdit(); });
+  $('eCancel').onclick = closeEdit;
+  $('editPop').addEventListener('click', (e) => { if (e.target === $('editPop')) closeEdit(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && editing) closeEdit(); });
 
   // ---------- Add by hand ----------
 
