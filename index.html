@@ -150,6 +150,10 @@
   details.dd[open] > summary::after { content: "\25B4"; }
   details.dd > .ddBody { padding: 0 14px 6px; }
   #saveGoals { margin-top: 6px; }
+  details.dd li { background: var(--card2); }
+  #ddBoard h3 { margin: 14px 0 8px; }
+  #ddBoard li.me { outline: 2px solid #2e7d32; }
+  #ddBoard li .right { color: var(--muted2); white-space: nowrap; }
 
   /* login */
   .err { color: var(--red-text); margin-bottom: 10px; }
@@ -511,6 +515,20 @@
 
     <div class="setPanel" id="spAcct" role="tabpanel" aria-labelledby="stabAcct" style="display:none">
       <div class="fine" id="acctLine"></div>
+      <details class="dd" id="ddBoard">
+        <summary>Leader boards</summary>
+        <div class="ddBody">
+          <div class="fine">See who logged the most calories. Pick a nickname to join. Only your nickname, today's calories and your all-time calories are shared with other people who use this app. Clear the nickname to leave.</div>
+          <div class="field"><label for="boardName">Your nickname on the boards</label><input id="boardName" maxlength="20" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
+          <div class="row"><button type="button" id="boardSave">Save nickname</button><button type="button" class="gray" id="boardRefresh">Refresh</button></div>
+          <div class="fine" id="boardMsg"></div>
+          <div class="fine" id="boardStatus"></div>
+          <h3>Most calories today</h3>
+          <ul id="boardToday"></ul>
+          <h3>Most calories all time</h3>
+          <ul id="boardAll"></ul>
+        </div>
+      </details>
       <button class="gray" id="logoutBtn">Log out</button>
     </div>
 
@@ -959,6 +977,7 @@
   let unit = 'lb';
   let aiKey = '', aiModel = '', showModelBox = false;
   let sharedKey = '', sharedEmails = [], sharedExists = false, unsubShared = null, unsubFriends = null;
+  let boardName = '', boardToday = null, boardPast = null, boardLast = '', unsubBoard = null, boardTimer = null, pastTimer = null, pastSeq = 0;
   let calYear = 0, calMonth = 0, monthDays = {};
   let wRange = 90;           // days shown on the weight graph (0 = all)
   let unsubMonth = null, unsubW = null;
@@ -1037,6 +1056,7 @@
     try {
       entriesRef().doc(id).delete().catch(syncError);
     } catch (e) { syncError(e); }
+    if (viewKey !== todayKey()) pastChanged();
   }
 
   function syncError(err) {
@@ -1101,6 +1121,7 @@
     if (unsubW) { unsubW(); unsubW = null; }
     if (unsubShared) { unsubShared(); unsubShared = null; }
     if (unsubFriends) { unsubFriends(); unsubFriends = null; }
+    stopBoardWatch();
     stopMonth();
   }
 
@@ -1159,6 +1180,8 @@
       unit = d.unit === 'kg' ? 'kg' : 'lb';
       aiKey = (typeof d.aiKey === 'string') ? d.aiKey : '';
       aiModel = (typeof d.aiModel === 'string') ? d.aiModel : '';
+      const bn = (typeof d.boardName === 'string') ? d.boardName : '';
+      if (bn !== boardName) { boardName = bn; if (boardName) startBoardWatch(); else stopBoardWatch(); }
       render();
       if (curView === 'cal') drawCalendar();
       if (curView === 'weight') drawWeight();
@@ -1188,6 +1211,8 @@
     sharedKey = '';
     sharedEmails = [];
     sharedExists = false;
+    boardName = '';
+    $('boardName').value = '';
     if (!user) {
       uid = null;
       showAuth();
@@ -1214,6 +1239,7 @@
     if (now !== realToday) {
       const wasToday = (viewKey === realToday);
       realToday = now;
+      if (boardName) startBoardWatch();
       if (wasToday) changeDay(now); else render();
       if (curView === 'cal') drawCalendar();
     }
@@ -1347,6 +1373,7 @@
       b.tabIndex = on ? 0 : -1;
     });
     $('saveGoals').style.display = (t === 'acct') ? 'none' : '';
+    if (t === 'acct' && $('ddBoard').open) loadBoard();
   }
 
   // tab = which Settings tab to land on ('cal', 'ai', 'look', 'acct'); anything else = Calories
@@ -1369,6 +1396,8 @@
     $('aiModel').value = aiModel;
     $('aiModelWrap').style.display = (aiModel || showModelBox) ? 'block' : 'none';
     $('shareErr').textContent = '';
+    $('boardName').value = boardName;
+    $('boardMsg').textContent = '';
     drawShare();
     updateGoalHint();
     $('planSummary').textContent = planSummaryText();
@@ -1885,10 +1914,164 @@
       return null;
     }
     openMeals[currentMeal] = true;
+    if (viewKey !== todayKey()) pastChanged();
     if (quiet) return addP;
     resetPicker();
     showMsg('Added ' + name + ' (' + amounts.k + ' cal) to ' + mealLabel(currentMeal) + '.');
     return addP;
+  }
+
+  // ---------- Leader boards ----------
+  // Each person who picks a nickname shares one small record, board/{their id}:
+  //   { name, day (today), dayCals (calories today), total (calories all time) }
+  // Today's calories come from a live watch on today's foods. "All time" = every earlier day (counted once a
+  // day, and again after an older day is changed) + today.
+
+  const BOARD_NAME_MAX = 20;
+  const fmtCal = (n) => Number(n).toLocaleString('en-US');
+
+  function pastCacheKey() { return 'ft_past_' + uid; }
+
+  function stopBoardWatch() {
+    if (unsubBoard) { unsubBoard(); unsubBoard = null; }
+    clearTimeout(boardTimer);
+    clearTimeout(pastTimer);
+    pastSeq++;
+    boardToday = null;
+    boardPast = null;
+    boardLast = '';
+  }
+
+  function startBoardWatch() {
+    stopBoardWatch();
+    if (!uid || !db || !boardName) return;
+    const r = dayRange(todayKey());
+    try {
+      unsubBoard = entriesRef().where('t', '>=', r[0]).where('t', '<', r[1]).onSnapshot(snap => {
+        let n = 0;
+        snap.forEach(d => { n += Number((d.data() || {}).cals) || 0; });
+        boardToday = n;
+        queuePublish();
+      }, () => {});
+    } catch (e) {}
+    loadPast();
+  }
+
+  function loadPast() {
+    if (!uid || !db || !boardName) return;
+    const key = todayKey(), cut = dayRange(key)[0], me = uid, seq = ++pastSeq;
+    try {
+      const c = JSON.parse(localStorage.getItem(pastCacheKey()) || 'null');
+      if (c && c.day === key && typeof c.sum === 'number') { boardPast = c.sum; queuePublish(); return; }
+    } catch (e) {}
+    entriesRef().where('t', '<', cut).get().then(snap => {
+      if (seq !== pastSeq || uid !== me) return;
+      if (snap.metadata && snap.metadata.fromCache) return;   // only a partial copy on this phone: wait for the real count
+      let n = 0;
+      snap.forEach(d => { n += Number((d.data() || {}).cals) || 0; });
+      boardPast = n;
+      try { localStorage.setItem(pastCacheKey(), JSON.stringify({ day: key, sum: n })); } catch (e) {}
+      queuePublish();
+    }).catch(() => {});
+  }
+
+  // A food on an older day was added, edited or deleted: count the older days again soon
+  function pastChanged() {
+    if (!boardName) return;
+    try { localStorage.removeItem(pastCacheKey()); } catch (e) {}
+    clearTimeout(pastTimer);
+    pastTimer = setTimeout(loadPast, 3000);
+  }
+
+  function queuePublish() {
+    clearTimeout(boardTimer);
+    boardTimer = setTimeout(publishBoard, 1200);
+  }
+
+  function publishBoard() {
+    if (!uid || !db || !boardName || boardToday == null || boardPast == null) return;
+    const rec = { name: boardName, day: todayKey(), dayCals: Math.round(boardToday), total: Math.round(boardPast + boardToday) };
+    const sig = JSON.stringify(rec);
+    if (sig === boardLast) return;
+    boardLast = sig;
+    try {
+      db.collection('board').doc(uid).set(rec).then(() => { if ($('ddBoard').open) loadBoard(); }).catch(e => { boardLast = ''; boardFail(e); });
+    } catch (e) { boardLast = ''; boardFail(e); }
+  }
+
+  function boardFail(err) {
+    const code = (err && err.code) ? String(err.code) : '';
+    $('boardStatus').className = 'err';
+    $('boardStatus').textContent = (code.indexOf('permission-denied') !== -1)
+      ? 'Leader boards are not turned on for this app yet (the database rules need one update).'
+      : 'Could not reach the leader boards. Check your connection.';
+  }
+
+  function boardRows(ul, rows, field) {
+    ul.textContent = '';
+    if (rows.length === 0) {
+      const li = document.createElement('li');
+      li.className = 'empty';
+      li.textContent = 'No one yet.';
+      ul.appendChild(li);
+      return;
+    }
+    rows.forEach((r, i) => {
+      const li = document.createElement('li');
+      if (r.uid === uid) li.className = 'me';
+      const a = document.createElement('span');
+      a.textContent = (i + 1) + '. ' + r.name + (r.uid === uid ? ' (you)' : '');
+      const b = document.createElement('span');
+      b.className = 'right';
+      b.textContent = fmtCal(r[field]) + ' cal';
+      li.appendChild(a);
+      li.appendChild(b);
+      ul.appendChild(li);
+    });
+  }
+
+  function loadBoard() {
+    if (!uid || !db) return;
+    $('boardStatus').className = 'fine';
+    $('boardStatus').textContent = 'Loading...';
+    db.collection('board').get().then(snap => {
+      const rows = [];
+      snap.forEach(d => {
+        const x = d.data() || {};
+        if (typeof x.name !== 'string' || !x.name) return;
+        rows.push({ uid: d.id, name: x.name, day: x.day, dayCals: Number(x.dayCals) || 0, total: Number(x.total) || 0 });
+      });
+      const today = todayKey();
+      const byDay = rows.filter(r => r.day === today && r.dayCals > 0).sort((a, b) => b.dayCals - a.dayCals).slice(0, 3);
+      const byAll = rows.filter(r => r.total > 0).sort((a, b) => b.total - a.total).slice(0, 3);
+      boardRows($('boardToday'), byDay, 'dayCals');
+      boardRows($('boardAll'), byAll, 'total');
+      $('boardStatus').textContent = '';
+    }).catch(boardFail);
+  }
+
+  function saveBoardName() {
+    const msg = $('boardMsg');
+    const raw = $('boardName').value.replace(/\s+/g, ' ').trim();
+    msg.className = 'err';
+    if (raw !== '' && raw.length < 2) { msg.textContent = 'Use at least 2 characters.'; return; }
+    if (raw.indexOf('@') !== -1) { msg.textContent = 'Use a nickname, not an email address.'; return; }
+    const name = raw.slice(0, BOARD_NAME_MAX);
+    $('boardName').value = name;
+    boardName = name;
+    try {
+      db.collection('users').doc(uid).set({ boardName: name }, { merge: true }).catch(syncError);
+    } catch (e) { syncError(e); return; }
+    msg.className = 'fine';
+    if (!name) {
+      stopBoardWatch();
+      try { db.collection('board').doc(uid).delete().catch(boardFail); } catch (e) { boardFail(e); }
+      msg.textContent = 'You are off the leader boards.';
+      setTimeout(() => { if ($('ddBoard').open) loadBoard(); }, 800);
+    } else {
+      startBoardWatch();
+      msg.textContent = 'Saved. You will show up in a moment.';
+    }
   }
 
   // ---------- Edit a food that is already logged ----------
@@ -1964,6 +2147,7 @@
     try {
       entriesRef().doc(editing.id).set(next).catch(syncError);
     } catch (e) { syncError(e); return; }
+    if (viewKey !== todayKey()) pastChanged();
     closeEdit();
   }
 
@@ -1976,6 +2160,10 @@
   });
   $('editForm').addEventListener('submit', (e) => { e.preventDefault(); saveEdit(); });
   $('eCancel').onclick = closeEdit;
+  $('boardSave').onclick = saveBoardName;
+  $('boardRefresh').onclick = loadBoard;
+  $('boardName').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); saveBoardName(); } });
+  $('ddBoard').addEventListener('toggle', () => { if ($('ddBoard').open) loadBoard(); });
   $('editPop').addEventListener('click', (e) => { if (e.target === $('editPop')) closeEdit(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && editing) closeEdit(); });
 
