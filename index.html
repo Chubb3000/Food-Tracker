@@ -133,6 +133,16 @@
   #setupResult { background: var(--okbg); color: var(--oktext); border-radius: 12px; padding: 12px; margin: 4px 0 12px; line-height: 1.5; }
   #setupResult .fine { color: var(--oktext); opacity: 0.85; margin: 6px 0 0; }
   #goalHint { color: var(--muted2); font-size: 0.9em; margin-bottom: 12px; }
+  .settabs { display: flex; margin-bottom: 14px; border-bottom: 2px solid var(--border); }
+  button.settab { flex: 1; background: none; color: var(--muted2); border-radius: 0; padding: 10px 2px; font-size: 0.85em; font-weight: 600; border-bottom: 3px solid transparent; margin-bottom: -2px; }
+  button.settab.active { color: var(--text); border-bottom-color: #2e7d32; }
+  details.dd { background: var(--card); border-radius: 12px; margin-bottom: 10px; }
+  details.dd > summary { position: relative; padding: 14px 40px 14px 14px; font-weight: 600; cursor: pointer; list-style: none; }
+  details.dd > summary::-webkit-details-marker { display: none; }
+  details.dd > summary::after { content: "\25BE"; position: absolute; right: 16px; top: 50%; transform: translateY(-50%); color: var(--muted2); }
+  details.dd[open] > summary::after { content: "\25B4"; }
+  details.dd > .ddBody { padding: 0 14px 6px; }
+  #saveGoals { margin-top: 6px; }
 
   /* login */
   .err { color: var(--red-text); margin-bottom: 10px; }
@@ -425,48 +435,78 @@
   <!-- SETTINGS -->
   <div id="settingsView" style="display:none">
     <button class="gray" id="settingsBackBtn" style="margin-bottom:8px">&larr; Back to home</button>
-    <h2>Appearance</h2>
-    <div class="field"><label for="themeSel">Theme</label>
-      <select id="themeSel"><option value="dark">Dark</option><option value="light">Light</option><option value="auto">Match my phone</option></select>
-      <div class="fine" style="margin:-6px 0 0">Changes right away. Saved on this device.</div></div>
-    <h2 style="margin-top:28px">Daily goals</h2>
-    <div class="fine" id="planSummary"></div>
-    <button type="button" class="gray" id="planBtn" style="margin-bottom:16px">Set up my calories and macros</button>
-    <div class="fine">Each goal is a range: the low number to the high number. You can type your own below.</div>
-    <div class="field"><label>Calories (range)</label><div class="row"><input id="gCalMin" type="number" inputmode="numeric" min="0" placeholder="From" aria-label="Calories, low"><input id="gCalMax" type="number" inputmode="numeric" min="0" placeholder="To" aria-label="Calories, high"></div></div>
-    <div class="field"><label>Protein (grams, range)</label><div class="row"><input id="gPMin" type="number" inputmode="numeric" min="0" placeholder="From" aria-label="Protein, low"><input id="gPMax" type="number" inputmode="numeric" min="0" placeholder="To" aria-label="Protein, high"></div></div>
-    <div class="field"><label>Carbs (grams, range)</label><div class="row"><input id="gCMin" type="number" inputmode="numeric" min="0" placeholder="From" aria-label="Carbs, low"><input id="gCMax" type="number" inputmode="numeric" min="0" placeholder="To" aria-label="Carbs, high"></div></div>
-    <div class="field"><label>Fat (grams, range)</label><div class="row"><input id="gFMin" type="number" inputmode="numeric" min="0" placeholder="From" aria-label="Fat, low"><input id="gFMax" type="number" inputmode="numeric" min="0" placeholder="To" aria-label="Fat, high"></div></div>
-    <div class="field"><label for="gS">Sugar limit (grams, part of carbs)</label><input id="gS" type="number" inputmode="numeric" min="0"></div>
-    <div class="field"><label for="gFi">Fiber goal (grams, part of carbs)</label><input id="gFi" type="number" inputmode="numeric" min="0"></div>
-    <div class="field"><label for="unitSel">Weight units</label>
-      <select id="unitSel"><option value="lb">Pounds (lb)</option><option value="kg">Kilograms (kg)</option></select></div>
-    <h2 style="margin-top:28px">Photo AI</h2>
-    <div class="fine">Photo AI needs an AI key. Free: a Gemini key from aistudio.google.com/apikey (it can be busy, and Google may use your photos). Steadier: a Claude key from platform.claude.com, which starts with sk-ant- and costs about a cent or less per photo. It is billed separately from a Claude subscription. Paste either key below. It is saved only to your account.</div>
-    <div class="field"><label for="aiKey">AI key (Gemini or Claude)</label><input id="aiKey" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
-    <div class="fine" id="aiKeyKind" style="margin-top:-6px"></div>
-    <div class="fine" id="aiSharedNote" style="display:none">Photo AI is ready. You are using the AI key shared by the app owner. You can also paste your own key above.</div>
-    <div class="field" id="aiModelWrap" style="display:none"><label for="aiModel">AI model name (leave blank for automatic)</label><input id="aiModel" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
-    <div id="goalHint"></div>
+    <div class="settabs" id="settingsTabs" role="tablist" aria-label="Settings sections">
+      <button type="button" class="settab active" role="tab" id="stabCal" data-t="cal" aria-selected="true" aria-controls="spCal">Calories</button>
+      <button type="button" class="settab" role="tab" id="stabAi" data-t="ai" aria-selected="false" aria-controls="spAi" tabindex="-1">AI Photo</button>
+      <button type="button" class="settab" role="tab" id="stabLook" data-t="look" aria-selected="false" aria-controls="spLook" tabindex="-1">Appearance</button>
+      <button type="button" class="settab" role="tab" id="stabAcct" data-t="acct" aria-selected="false" aria-controls="spAcct" tabindex="-1">Account</button>
+    </div>
+
+    <div class="setPanel" id="spCal" role="tabpanel" aria-labelledby="stabCal">
+      <details class="dd" id="ddCalc">
+        <summary>Calorie calculator</summary>
+        <div class="ddBody">
+          <div class="fine" id="planSummary"></div>
+          <button type="button" class="gray" id="planBtn" style="margin-bottom:12px">Set up my calories and macros</button>
+        </div>
+      </details>
+      <details class="dd" id="ddManual">
+        <summary>Manual</summary>
+        <div class="ddBody">
+          <div class="fine">Each goal is a range: the low number to the high number. Type your own below.</div>
+          <div class="field"><label>Calories (range)</label><div class="row"><input id="gCalMin" type="number" inputmode="numeric" min="0" placeholder="From" aria-label="Calories, low"><input id="gCalMax" type="number" inputmode="numeric" min="0" placeholder="To" aria-label="Calories, high"></div></div>
+          <div class="field"><label>Protein (grams, range)</label><div class="row"><input id="gPMin" type="number" inputmode="numeric" min="0" placeholder="From" aria-label="Protein, low"><input id="gPMax" type="number" inputmode="numeric" min="0" placeholder="To" aria-label="Protein, high"></div></div>
+          <div class="field"><label>Carbs (grams, range)</label><div class="row"><input id="gCMin" type="number" inputmode="numeric" min="0" placeholder="From" aria-label="Carbs, low"><input id="gCMax" type="number" inputmode="numeric" min="0" placeholder="To" aria-label="Carbs, high"></div></div>
+          <div class="field"><label>Fat (grams, range)</label><div class="row"><input id="gFMin" type="number" inputmode="numeric" min="0" placeholder="From" aria-label="Fat, low"><input id="gFMax" type="number" inputmode="numeric" min="0" placeholder="To" aria-label="Fat, high"></div></div>
+          <div class="field"><label for="gS">Sugar limit (grams, part of carbs)</label><input id="gS" type="number" inputmode="numeric" min="0"></div>
+          <div class="field"><label for="gFi">Fiber goal (grams, part of carbs)</label><input id="gFi" type="number" inputmode="numeric" min="0"></div>
+          <div id="goalHint"></div>
+        </div>
+      </details>
+    </div>
+
+    <div class="setPanel" id="spAi" role="tabpanel" aria-labelledby="stabAi" style="display:none">
+      <div class="fine" id="aiSharedNote" style="display:none">Photo AI is ready. You are using the AI key shared by the app owner. You can also paste your own key below.</div>
+      <details class="dd" id="ddKey">
+        <summary>AI key</summary>
+        <div class="ddBody">
+          <div class="fine">Photo AI needs an AI key. Free: a Gemini key from aistudio.google.com/apikey (it can be busy, and Google may use your photos). Steadier: a Claude key from platform.claude.com, which starts with sk-ant- and costs about a cent or less per photo. It is billed separately from a Claude subscription. Paste either key below. It is saved only to your account.</div>
+          <div class="field"><label for="aiKey">AI key (Gemini or Claude)</label><input id="aiKey" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
+          <div class="fine" id="aiKeyKind" style="margin-top:-6px"></div>
+          <div class="field" id="aiModelWrap" style="display:none"><label for="aiModel">AI model name (leave blank for automatic)</label><input id="aiModel" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
+        </div>
+      </details>
+      <details class="dd" id="shareBox">
+        <summary>Owner: share my AI key with friends</summary>
+        <div class="ddBody">
+          <div class="fine">Friends you approve can use your AI key without setting up their own. They must create their own account in this app first. An approved friend could copy the key if they wanted to, so only approve people you trust. The cost comes out of your credits.</div>
+          <div class="fine" id="shareStatus"></div>
+          <div class="field"><label for="shareEmail">Friend's email (the one they signed up with)</label><input id="shareEmail" type="email" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
+          <button type="button" id="shareAdd">Approve friend</button>
+          <ul id="shareList"></ul>
+          <div class="row">
+            <button type="button" class="gray" id="shareUpdate">Update the shared key</button>
+            <button type="button" class="gray" id="shareStop">Stop sharing</button>
+          </div>
+          <div class="err" id="shareErr"></div>
+        </div>
+      </details>
+    </div>
+
+    <div class="setPanel" id="spLook" role="tabpanel" aria-labelledby="stabLook" style="display:none">
+      <div class="field"><label for="themeSel">Theme</label>
+        <select id="themeSel"><option value="dark">Dark</option><option value="light">Light</option><option value="auto">Match my phone</option></select>
+        <div class="fine" style="margin:-6px 0 0">Changes right away. Saved on this device.</div></div>
+      <div class="field"><label for="unitSel">Weight units</label>
+        <select id="unitSel"><option value="lb">Pounds (lb)</option><option value="kg">Kilograms (kg)</option></select></div>
+    </div>
+
+    <div class="setPanel" id="spAcct" role="tabpanel" aria-labelledby="stabAcct" style="display:none">
+      <div class="fine" id="acctLine"></div>
+      <button class="gray" id="logoutBtn">Log out</button>
+    </div>
+
     <button id="saveGoals">Save settings</button>
-
-    <details id="shareBox" style="margin-top:22px">
-      <summary>Owner: share my AI key with friends</summary>
-      <div class="fine">Friends you approve can use your AI key without setting up their own. They must create their own account in this app first. An approved friend could copy the key if they wanted to, so only approve people you trust. The cost comes out of your credits.</div>
-      <div class="fine" id="shareStatus"></div>
-      <div class="field"><label for="shareEmail">Friend's email (the one they signed up with)</label><input id="shareEmail" type="email" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
-      <button type="button" id="shareAdd">Approve friend</button>
-      <ul id="shareList"></ul>
-      <div class="row">
-        <button type="button" class="gray" id="shareUpdate">Update the shared key</button>
-        <button type="button" class="gray" id="shareStop">Stop sharing</button>
-      </div>
-      <div class="err" id="shareErr"></div>
-    </details>
-
-    <h2 style="margin-top:32px">Account</h2>
-    <div class="fine" id="acctLine"></div>
-    <button class="gray" id="logoutBtn">Log out</button>
   </div>
 
 <!-- PLAN SETUP: step 1 = pick a goal, step 2 = height, weight and the rest -->
@@ -1267,7 +1307,22 @@
     window.scrollTo(0, 0);
   }
 
-  function openSettings() {
+  const SET_PANELS = { cal: 'spCal', ai: 'spAi', look: 'spLook', acct: 'spAcct' };
+  function showSettingsTab(t) {
+    if (!SET_PANELS[t]) t = 'cal';
+    Object.keys(SET_PANELS).forEach(k => { $(SET_PANELS[k]).style.display = (k === t) ? 'block' : 'none'; });
+    Array.prototype.forEach.call($('settingsTabs').children, b => {
+      const on = b.getAttribute('data-t') === t;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+      b.tabIndex = on ? 0 : -1;
+    });
+    $('saveGoals').style.display = (t === 'acct') ? 'none' : '';
+  }
+
+  // tab = which Settings tab to land on ('cal', 'ai', 'look', 'acct'); anything else = Calories
+  function openSettings(tab) {
+    showSettingsTab(typeof tab === 'string' ? tab : 'cal');
     $('gCalMin').value = goals.calMin;
     $('gCalMax').value = goals.calMax;
     $('gPMin').value = goals.pMin;
@@ -1288,6 +1343,7 @@
     drawShare();
     updateGoalHint();
     $('planSummary').textContent = planSummaryText();
+    if (tab === 'ai' && $('aiModelWrap').style.display !== 'none') $('ddKey').open = true;
     showView('settings');
   }
 
@@ -2742,7 +2798,7 @@
           b.type = 'button';
           b.className = 'link';
           b.textContent = 'Open Settings';
-          b.onclick = openSettings;
+          b.onclick = () => { openSettings('ai'); $('ddKey').open = true; };
           st.appendChild(b);
         }
       }
@@ -3478,7 +3534,7 @@
   }
 
   function skipSetup() {
-    if (setupMode !== 'first') { closeSetup(); openSettings(); return; }
+    if (setupMode !== 'first') { closeSetup(); openSettings('cal'); $('ddCalc').open = true; return; }
     // keep the goals they have (older accounts get them as ranges) and do not ask again
     goals = normGoals(goals);
     setupDone = true;
@@ -3503,7 +3559,17 @@
   // ---------- Buttons ----------
 
   $('homeBtn').onclick = goHome;
-  $('settingsBtn').onclick = openSettings;
+  $('settingsBtn').onclick = () => openSettings();
+  Array.prototype.forEach.call($('settingsTabs').children, b => { b.onclick = () => showSettingsTab(b.getAttribute('data-t')); });
+  $('settingsTabs').addEventListener('keydown', e => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    const keys = Object.keys(SET_PANELS);
+    const cur = keys.findIndex(k => $(SET_PANELS[k]).style.display !== 'none');
+    const nxt = keys[(cur + (e.key === 'ArrowRight' ? 1 : keys.length - 1)) % keys.length];
+    showSettingsTab(nxt);
+    $('settingsTabs').children[keys.indexOf(nxt)].focus();
+    e.preventDefault();
+  });
   $('backBtn').onclick = goHome;
   $('settingsBackBtn').onclick = goHome;
   // Tap Carbs to show or hide sugar and fiber
@@ -3549,7 +3615,7 @@
       b.type = 'button';
       b.className = 'link';
       b.textContent = 'Open Settings';
-      b.onclick = openSettings;
+      b.onclick = () => { openSettings('ai'); $('ddKey').open = true; };
       st.appendChild(b);
       return;
     }
